@@ -166,8 +166,13 @@ func (c ChunkHandler) ServeDELETE(hash string, w http.ResponseWriter, r *http.Re
 func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hash := r.URL.Path[len("/chunk/"):]
 
-	if hash == "" {
-		c.ServeList(w, r)
+	if len(hash) <= len("/chunk/") {
+		if r.Method == "GET" {
+			c.ServeList(w, r)
+		} else {
+			w.Header().Add("Content-Length", "0")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 		return
 	}
 
@@ -182,19 +187,24 @@ func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.ServeDELETE(hash, w, r)
 
 	default:
+		w.Header().Add("Content-Length", "0")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
 func main() {
-	/*
-	"/master/staus" GET/POST
-	"/master/poll_request" POST
-	"/status" GET/POST
-	"/recipie" POST
-	"/chunk/<[0-9a-f]+>" GET/PUT
+	/* TODO
+	"/health" GET/POST
+	"/leader" GET redirect
+	"/leader/request" POST
+	"/recipe" GET/POST
+	"/recipe/<path/to/recipe>" GET
+	"/recipe/journal" GET/POST
+	"/recipe/journal/commit" PUT
+	"/chunk/backorder" GET/POST
+	"/metrics" GET
 	*/
 
-	http.Handle("/chunk/", ChunkHandler{"chunks/"})
+	http.Handle("/chunk", ChunkHandler{"chunks/"})
 	http.ListenAndServe(":8080", nil)
 }
