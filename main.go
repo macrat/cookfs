@@ -1,15 +1,37 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/hex"
+	"encoding/json"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 )
 
 const (
 	CHUNK_SIZE = 64
 )
+
+func checkHash(hash string, data []byte) bool {
+	except, err := hex.DecodeString(hash)
+	if err != nil || len(except) != sha512.Size {
+		return false
+	}
+
+	sum := sha512.Sum512(data)
+
+	for i, _ := range except {
+		if except[i] != sum[i] {
+			return false
+		}
+	}
+
+	return true
+}
 
 type ChunkIOError struct {
 	code    int
@@ -28,7 +50,7 @@ type ChunkHandler struct {
 	BasePath string
 }
 
-func (c ChunkHandler) Read(hash string) (io.Reader, *ChunkIOError) {
+func (c ChunkHandler) Read(hash string) (io.ReadCloser, *ChunkIOError) {
 	if f, err := os.Open(path.Join(c.BasePath, hash)); err != nil {
 		return nil, &ChunkIOError{http.StatusNotFound, err.Error()}
 	} else {
@@ -36,7 +58,11 @@ func (c ChunkHandler) Read(hash string) (io.Reader, *ChunkIOError) {
 	}
 }
 
-func (c ChunkHandler) Create(hash string) (io.Writer, *ChunkIOError) {
+func (c ChunkHandler) Create(hash string) (io.WriteCloser, *ChunkIOError) {
+	if _, err := os.Stat(path.Join(c.BasePath, hash)); err == nil {
+		return nil, &ChunkIOError{http.StatusOK, "Already exists"}
+	}
+
 	if f, err := os.Create(path.Join(c.BasePath, hash)); err != nil {
 		return nil, &ChunkIOError{http.StatusInternalServerError, err.Error()}
 	} else {
@@ -52,48 +78,111 @@ func (c ChunkHandler) Delete(hash string) *ChunkIOError {
 	}
 }
 
+func (c ChunkHandler) ServeList(w http.ResponseWriter, r *http.Request) {
+	files, err := ioutil.ReadDir(c.BasePath)
+	if err != nil {
+		w.Header().Add("Content-Length", "0")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	chunks := make([]string, 0, len(files))
+	for _, file := range files {
+		if !file.IsDir() {
+			chunks = append(chunks, file.Name())
+		}
+	}
+
+	bytes, err := json.Marshal(chunks)
+	if err != nil {
+		w.Header().Add("Content-Length", "0")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	w.Header().Add("Content-Length", strconv.Itoa(len(bytes)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(bytes)
+}
+
+func (c ChunkHandler) ServeGET(hash string, w http.ResponseWriter, r *http.Request) {
+	f, err := c.Read(hash)
+	if err != nil {
+		w.Header().Add("Content-Length", "0")
+		w.WriteHeader(err.Code())
+		return
+	}
+	defer f.Close()
+
+	w.Header().Add("Content-Type", "application/octet-stream")
+	w.Header().Add("Content-Length", strconv.Itoa(CHUNK_SIZE))
+	w.WriteHeader(http.StatusOK)
+	_, e := io.Copy(w, f)
+	if e != nil {
+		println(e.Error())
+	}
+}
+
+func (c ChunkHandler) ServePUT(hash string, w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Length", "0")
+
+	data := make([]byte, CHUNK_SIZE + 1)
+
+	if size, err := r.Body.Read(data); err != io.EOF || size != CHUNK_SIZE {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if !checkHash(hash, data[:CHUNK_SIZE]) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	f, err := c.Create(hash)
+	if err != nil {
+		w.WriteHeader(err.Code())
+		return
+	}
+	defer f.Close()
+
+	if s, e := f.Write(data[:CHUNK_SIZE]); e != nil || s != CHUNK_SIZE {
+		w.WriteHeader(http.StatusInternalServerError)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func (c ChunkHandler) ServeDELETE(hash string, w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Length", "0")
+
+	if err := c.Delete(hash); err != nil {
+		w.WriteHeader(err.Code())
+	} else {
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	println(r.URL.Path)
 	hash := r.URL.Path[len("/chunk/"):]
+
+	if hash == "" {
+		c.ServeList(w, r)
+		return
+	}
 
 	switch r.Method {
 	case "GET":
-		f, err := c.Read(hash)
-		if err != nil {
-			w.WriteHeader(err.Code())
-		} else {
-			w.Header().Add("Content-Type", "application/octet-stream")
-			w.WriteHeader(http.StatusOK)
-			io.Copy(w, f)
-		}
+		c.ServeGET(hash, w, r)
 
 	case "PUT":
-		data := make([]byte, CHUNK_SIZE + 1)
-
-		if size, err := r.Body.Read(data); err != nil || size != CHUNK_SIZE {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		f, err := c.Create(hash)
-		if err != nil {
-			w.WriteHeader(err.Code())
-		} else if s, e := f.Write(data); e != nil || s != CHUNK_SIZE {
-			w.WriteHeader(http.StatusInternalServerError)
-		} else {
-			w.WriteHeader(http.StatusCreated)
-			return
-		}
+		c.ServePUT(hash, w, r)
 
 	case "DELETE":
-		if err := c.Delete(hash); err != nil {
-			w.WriteHeader(err.Code())
-		} else {
-			w.WriteHeader(http.StatusNoContent)
-		}
+		c.ServeDELETE(hash, w, r)
 
 	default:
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
