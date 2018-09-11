@@ -164,13 +164,17 @@ func (c ChunkHandler) ServeDELETE(hash string, w http.ResponseWriter, r *http.Re
 }
 
 func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if len(r.URL.Path) <= len("/chunk/") {
+	if r.URL.Path == "/chunk/" {
 		if r.Method == "GET" {
 			c.ServeList(w, r)
 		} else {
 			w.Header().Add("Content-Length", "0")
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
+		return
+	} else if len(r.URL.Path) < len("/chunk/") + sha512.Size*2 {
+		w.Header().Add("Content-Length", "0")
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -205,6 +209,6 @@ func main() {
 	"/metrics" GET
 	*/
 
-	http.Handle("/chunk", ChunkHandler{"chunks/"})
+	http.Handle("/chunk/", ChunkHandler{"chunks/"})
 	http.ListenAndServe(":8080", nil)
 }
