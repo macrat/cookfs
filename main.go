@@ -164,9 +164,7 @@ func (c ChunkHandler) ServeDELETE(hash string, w http.ResponseWriter, r *http.Re
 }
 
 func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	hash := r.URL.Path[len("/chunk/"):]
-
-	if len(hash) <= len("/chunk/") {
+	if len(r.URL.Path) <= len("/chunk/") {
 		if r.Method == "GET" {
 			c.ServeList(w, r)
 		} else {
@@ -175,6 +173,8 @@ func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	hash := r.URL.Path[len("/chunk/"):]
 
 	switch r.Method {
 	case "GET":
