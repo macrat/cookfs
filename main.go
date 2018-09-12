@@ -4,12 +4,14 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
+	"time"
 )
 
 const (
@@ -196,6 +198,24 @@ func (c ChunkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type Mux struct {
+	httpServer *http.ServeMux
+}
+
+func NewMux(chunk ChunkHandler) *Mux {
+	m := http.NewServeMux()
+
+	m.Handle("/chunk/", chunk)
+
+	return &Mux{m}
+}
+
+func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("timestamp:%s method:%s path:\"%s\"\n", time.Now(), r.Method, r.URL.Path)
+
+	m.httpServer.ServeHTTP(w, r)
+}
+
 func main() {
 	/* TODO
 	"/health" GET/POST
@@ -209,6 +229,5 @@ func main() {
 	"/metrics" GET
 	*/
 
-	http.Handle("/chunk/", ChunkHandler{"chunks/"})
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":8080", NewMux(ChunkHandler{"chunks/"}))
 }
