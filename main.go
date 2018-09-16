@@ -24,9 +24,9 @@ const (
 	CHUNK_SIZE         = 64
 	LEADER_DEATH_TIMER = 1 * time.Second
 	LEADER_CHECK_TIMER = 100 * time.Millisecond
-	POLL_TIMEOUT       = 100 * time.Millisecond
+	POLL_TIMEOUT       = 10000 * time.Millisecond
 	POLL_WAIT_MINIMAL  = 100 * time.Millisecond
-	POLL_WAIT_MAXIMUM  = 500 * time.Millisecond
+	POLL_WAIT_MAXIMUM  = 1000 * time.Millisecond
 )
 
 func checkHash(hash string, data []byte) bool {
@@ -228,14 +228,20 @@ type Leader struct {
 }
 
 func (l Leader) MarshalJSON() ([]byte, error) {
+	var url *string
+	if l.URL != nil {
+		u := l.URL.String()
+		url = &u
+	}
+
 	return json.Marshal(struct {
-		URL  string `json:"url"`
-		Term int64  `json:"term"`
-	}{l.URL.String(), l.Term})
+		URL  *string `json:"url"`
+		Term int64   `json:"term"`
+	}{url, l.Term})
 }
 
 func (l Leader) IsAlive() bool {
-	return time.Now().Sub(l.LastContact) <= LEADER_DEATH_TIMER
+	return l.LastContact.Add(LEADER_DEATH_TIMER).After(time.Now())
 }
 
 type PollInfo struct {
@@ -266,11 +272,19 @@ type LeaderHandler struct {
 }
 
 func (l *LeaderHandler) sendAliveMessage() {
+	wg := &sync.WaitGroup{}
 	for _, node := range l.Nodes() {
+		if node.URL.String() == l.Self.URL.String() {
+			continue
+		}
+
+		wg.Add(1)
 		go func() {
 			http.Post(node.endpoint("/leader").String(), "application/json", bytes.NewReader(l.aliveMessage))
+			wg.Done()
 		}()
 	}
+	wg.Wait()
 }
 
 func (l *LeaderHandler) sendPollRequest() {
@@ -297,20 +311,21 @@ func (l *LeaderHandler) sendPollRequest() {
 		}
 	}
 
-	if score >= int(math.Ceil(float64(len(nodes))/2.0)) {
-		l.Lock()
-		defer l.Unlock()
+	l.Lock()
+	defer l.Unlock()
 
+	if score >= int(math.Ceil(float64(len(nodes))/2.0)) {
+		l.aliveMessage, _ = json.Marshal(AliveMessage{
+			URL:  l.Self.URL,
+			Term: l.leader.Term + 1,
+		})
 		l.leader = Leader{
 			Node:        l.Self,
 			Term:        l.leader.Term + 1,
 			LastContact: time.Now(),
 		}
 
-		l.aliveMessage, _ = json.Marshal(AliveMessage{
-			URL:  l.leader.URL,
-			Term: l.leader.Term,
-		})
+		l.sendAliveMessage()
 
 		fmt.Printf("timestamp:%s message:\"I'm leader of %d term\"\n", time.Now(), l.leader.Term)
 	} else {
@@ -321,8 +336,11 @@ func (l *LeaderHandler) sendPollRequest() {
 func (l *LeaderHandler) checkAliveMessage() {
 	if !l.leader.IsAlive() {
 		delay := rand.Int63n((POLL_WAIT_MAXIMUM - POLL_WAIT_MINIMAL).Nanoseconds()) + POLL_WAIT_MINIMAL.Nanoseconds()
-		time.Sleep(time.Duration(delay))
-		l.sendPollRequest()
+		<-time.After(time.Duration(delay))
+
+		if !l.leader.IsAlive() {
+			l.sendPollRequest()
+		}
 	}
 }
 
@@ -368,7 +386,7 @@ func (l *LeaderHandler) HandleAlive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if l.leader.Term > req.Term && (l.leader.Term != req.Term || l.leader.URL != req.URL) {
+	if !(l.leader.Term < req.Term || (l.leader.Term == req.Term && l.leader.URL.String() == req.URL.String())) {
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
@@ -380,6 +398,7 @@ func (l *LeaderHandler) HandleAlive(w http.ResponseWriter, r *http.Request) {
 	l.Lock()
 	defer l.Unlock()
 
+	l.aliveMessage = nil
 	l.leader = Leader{
 		Node: Node{
 			URL: req.URL,
@@ -404,7 +423,7 @@ func (l *LeaderHandler) HandlePollRequest(w http.ResponseWriter, r *http.Request
 	l.Lock()
 	defer l.Unlock()
 
-	if l.leader.Term < req.Term && (l.poll.Term < req.Term || l.poll.Timestamp.Add(POLL_TIMEOUT).Before(time.Now())) {
+	if l.leader.Term < req.Term && (l.poll.Term < req.Term || l.poll.Timestamp.Add(POLL_TIMEOUT).Before(time.Now())) && !l.leader.IsAlive() {
 		l.poll.URL = req.URL
 		l.poll.Term = req.Term
 		l.poll.Timestamp = time.Now()
@@ -458,7 +477,7 @@ func NewMux(chunk *ChunkHandler, leader *LeaderHandler) *Mux {
 
 func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !(r.Method == "POST" && r.URL.Path == "/leader") {
-		fmt.Printf("timestamp:%s method:%s path:\"%s\"\n", time.Now(), r.Method, r.URL.Path)
+		//fmt.Printf("timestamp:%s method:%s path:\"%s\"\n", time.Now(), r.Method, r.URL.Path)
 	}
 
 	if strings.HasSuffix(r.URL.Path, "/") {
