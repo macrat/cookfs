@@ -29,7 +29,7 @@ function info() {
 }
 
 function stop_random() {
-	docker-compose stop $(for i in `seq ${1:-1}`; do echo cookfs_`echo ${IDS} | grep -o '[0-9]\+' | sort -R | head -n 1`; done)
+	docker-compose stop $(echo `echo ${IDS} | grep -o '[0-9]\+' | sort -R | head -n ${1:-1} | xargs -I{} echo cookfs_{}`)
 }
 
 function stop_leader() {
