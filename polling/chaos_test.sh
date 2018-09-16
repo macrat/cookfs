@@ -1,6 +1,6 @@
 #!/bin/bash
 
-IDS=`echo {1..20}`
+IDS=`echo {1..50}`
 BASE_PORT=8000
 
 function generate() {
@@ -15,7 +15,7 @@ function generate() {
 	  echo "    image: golang:alpine"
 	  echo "    volumes: ['./:/cookfs']"
 	  echo "    ports: ['$((${BASE_PORT} + ${ID} - 1)):80']"
-	  echo "    command: ash -c 'go run /cookfs/*.go http://cookfs_${ID}:80 ${HOSTS}'"
+	  echo "    command: ash -c 'cd /cookfs && go run `echo $(ls *.go | grep -v _test.go)` http://cookfs_${ID}:80 ${HOSTS}'"
 	  echo
 	done
 }
@@ -23,7 +23,7 @@ function generate() {
 function info() {
 	for ID in ${IDS}; do
 		printf "${ID}: "
-		curl --silent http://localhost:$((${BASE_PORT} + ${ID} - 1))/
+		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID} - 1))/
 		echo
 	done
 }
