@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strconv"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -74,12 +74,12 @@ func (n *Node) Post(endpoint string, data interface{}) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return http.Post(n.Join(endpoint).String(), "application/json", bytes.NewReader(x))
+	return (&http.Client{Timeout: 100 * time.Millisecond}).Post(n.Join(endpoint).String(), "application/json", bytes.NewReader(x))
 }
 
 type Term struct {
-	ID     int64
-	Leader *Node
+	ID     int64 `json:"id"`
+	Leader *Node `json:"leader"`
 }
 
 func (t Term) Equals(another Term) bool {
@@ -99,7 +99,7 @@ type Polling struct {
 
 	Self *Node
 
-	SendAlive func(Term)
+	SendAlive   func(Term)
 	PollRequest func(Term) bool
 
 	PollingInterval     time.Duration
@@ -116,20 +116,20 @@ type Polling struct {
 
 func NewPolling(url *Node, sendAlive func(Term), pollRequest func(Term) bool) *Polling {
 	return &Polling{
-		Self: url,
-		SendAlive: sendAlive,
-		PollRequest: pollRequest,
-		PollingInterval: 500 * time.Millisecond,
-		SendAliveInterval: 100 * time.Millisecond,
-		LeaderDeathTimerMin: 1 * time.Second,
-		LeaderDeathTimerMax: 2 * time.Second,
-		aliveArrived: make(chan struct{}),
+		Self:                url,
+		SendAlive:           sendAlive,
+		PollRequest:         pollRequest,
+		PollingInterval:     1 * time.Second,
+		SendAliveInterval:   100 * time.Millisecond,
+		LeaderDeathTimerMin: 500 * time.Millisecond,
+		LeaderDeathTimerMax: 700 * time.Millisecond,
+		aliveArrived:        make(chan struct{}),
 	}
 }
 
 func (p *Polling) StartPoll() {
-	newTerm := Term {
-		ID: p.currentTerm.ID + 1,
+	newTerm := Term{
+		ID:     p.currentTerm.ID + 1,
 		Leader: p.Self,
 	}
 
@@ -141,11 +141,14 @@ func (p *Polling) StartPoll() {
 
 		p.currentTerm = newTerm
 		p.StartLeaderLoop()
+	} else {
+		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Self, newTerm.ID)
 	}
 }
 
 func (p *Polling) AliveArrived(term Term) (accepted bool) {
 	if !term.NewerThan(p.currentTerm) && !term.Equals(p.currentTerm) {
+		fmt.Printf("denied: %s(%d) -> %s(%d)\n", p.currentTerm.Leader, p.currentTerm.ID, term.Leader, term.ID)
 		return false
 	}
 
@@ -189,6 +192,7 @@ func (p *Polling) StartLeaderLoop() {
 		for {
 			select {
 			case <-p.aliveArrived:
+				fmt.Printf("%s: relegation to follower because alive arrived from %s\n", p.Self, p.currentTerm.Leader)
 				p.StartFollowerLoop()
 				return
 
@@ -203,7 +207,7 @@ func (p *Polling) StartLeaderLoop() {
 }
 
 func (p *Polling) LeaderDeathTimer() time.Duration {
-	return time.Duration(rand.Int63n(int64(p.LeaderDeathTimerMax - p.LeaderDeathTimerMin))) + p.LeaderDeathTimerMin
+	return time.Duration(rand.Int63n(int64(p.LeaderDeathTimerMax-p.LeaderDeathTimerMin))) + p.LeaderDeathTimerMin
 }
 
 func (p *Polling) StartFollowerLoop() {
@@ -223,7 +227,7 @@ func (p *Polling) StartFollowerLoop() {
 				continue
 
 			case <-time.After(p.LeaderDeathTimer()):
-				fmt.Printf("%s: leader is dead\n", p.Self)
+				fmt.Printf("%s: leader(%s) of %d is dead\n", p.Self, p.currentTerm.Leader, p.currentTerm.ID)
 				p.StartPoll()
 
 			case <-stop:
@@ -294,12 +298,12 @@ func (p HTTPPolling) PollRequest(term Term) bool {
 	}
 
 	score := 0
-	for _, _ = range p.Nodes {
+	for range p.Nodes {
 		if <-response {
 			score++
 		}
 
-		if float64(score) >= float64(len(p.Nodes)) / 2.0 {
+		if float64(score) >= float64(len(p.Nodes))/2.0 {
 			return true
 		}
 	}
