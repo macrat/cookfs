@@ -10,23 +10,27 @@ import (
 type HTTPPolling struct {
 	Polling *Polling
 
-	Self  *Node
+	self  *Node
 	Nodes []*Node
 }
 
 func NewHTTPPolling(self *Node, nodes []*Node) HTTPPolling {
-	p := HTTPPolling{Self: self, Nodes: nodes}
+	p := HTTPPolling{self: self, Nodes: nodes}
 
-	p.Polling = NewPolling(self, p.SendAlive, p.PollRequest)
+	p.Polling = NewPolling(p)
 
 	return p
+}
+
+func (p HTTPPolling) Self() *Node {
+	return p.self
 }
 
 func (p HTTPPolling) SendAlive(term Term) {
 	wg := &sync.WaitGroup{}
 
 	for _, n := range p.Nodes {
-		if n.Equals(p.Self) {
+		if n.Equals(p.self) {
 			continue
 		}
 
@@ -36,9 +40,9 @@ func (p HTTPPolling) SendAlive(term Term) {
 
 			resp, err := node.Post("/alive", term)
 			if err != nil {
-				fmt.Printf("%s: failed to send alive to %s\n", p.Self, node)
+				fmt.Printf("%s: failed to send alive to %s\n", p.self, node)
 			} else if resp.StatusCode != http.StatusNoContent {
-				fmt.Printf("%s: denied alive by %s: %s\n", p.Self, node, resp.Status)
+				fmt.Printf("%s: denied alive by %s: %s\n", p.self, node, resp.Status)
 			}
 		}(n)
 	}
@@ -130,10 +134,10 @@ func (p HTTPPolling) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p HTTPPolling) Start() {
-	p.Polling.Start()
+func (p HTTPPolling) Start() error {
+	return p.Polling.Start()
 }
 
-func (p HTTPPolling) Stop() {
-	p.Polling.Stop()
+func (p HTTPPolling) Stop() error {
+	return p.Polling.Stop()
 }

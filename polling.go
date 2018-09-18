@@ -10,10 +10,7 @@ import (
 type Polling struct {
 	sync.Mutex
 
-	Self *Node
-
-	SendAlive   func(Term)
-	PollRequest func(Term) bool
+	Endpoint EndpointPlugin
 
 	PollingInterval     time.Duration
 	SendAliveInterval   time.Duration
@@ -27,11 +24,9 @@ type Polling struct {
 	currentLoop chan struct{}
 }
 
-func NewPolling(url *Node, sendAlive func(Term), pollRequest func(Term) bool) *Polling {
+func NewPolling(endpoint EndpointPlugin) *Polling {
 	return &Polling{
-		Self:                url,
-		SendAlive:           sendAlive,
-		PollRequest:         pollRequest,
+		Endpoint:            endpoint,
 		PollingInterval:     1 * time.Second,
 		SendAliveInterval:   100 * time.Millisecond,
 		LeaderDeathTimerMin: 500 * time.Millisecond,
@@ -47,19 +42,19 @@ func (p *Polling) CurrentTerm() Term {
 func (p *Polling) StartPoll() {
 	newTerm := Term{
 		ID:     p.currentTerm.ID + 1,
-		Leader: p.Self,
+		Leader: p.Endpoint.Self(),
 	}
 
-	if p.PollRequest(newTerm) {
+	if p.Endpoint.PollRequest(newTerm) {
 		p.Lock()
 		defer p.Unlock()
 
-		fmt.Printf("%s: I'm leader of %d\n", p.Self, newTerm.ID)
+		fmt.Printf("%s: I'm leader of %d\n", p.Endpoint.Self(), newTerm.ID)
 
 		p.currentTerm = newTerm
 		p.startLeaderLoop()
 	} else {
-		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Self, newTerm.ID)
+		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Endpoint.Self(), newTerm.ID)
 	}
 }
 
@@ -70,7 +65,7 @@ func (p *Polling) AliveArrived(term Term) (accepted bool) {
 	}
 
 	if !term.Equals(p.currentTerm) {
-		fmt.Printf("%s: term changed to %s\n", p.Self, term)
+		fmt.Printf("%s: term changed to %s\n", p.Endpoint.Self(), term)
 	}
 
 	p.Lock()
@@ -89,7 +84,7 @@ func (p *Polling) CanPoll(term Term) bool {
 
 		p.lastPoll = time.Now()
 
-		fmt.Printf("%s: vote to %s\n", p.Self, term)
+		fmt.Printf("%s: vote to %s\n", p.Endpoint.Self(), term)
 
 		return true
 	} else {
@@ -109,12 +104,12 @@ func (p *Polling) startLeaderLoop() {
 		for {
 			select {
 			case <-p.aliveArrived:
-				fmt.Printf("%s: relegation to follower because arrived alive of %s\n", p.Self, p.currentTerm)
+				fmt.Printf("%s: relegation to follower because arrived alive of %s\n", p.Endpoint.Self(), p.currentTerm)
 				p.startFollowerLoop()
 				return
 
 			case <-time.After(p.SendAliveInterval):
-				p.SendAlive(p.currentTerm)
+				p.Endpoint.SendAlive(p.currentTerm)
 
 			case <-stop:
 				return
@@ -147,7 +142,7 @@ func (p *Polling) startFollowerLoop() {
 				continue
 
 			case <-time.After(p.leaderDeathTimer() * time.Duration(candidate_count)):
-				fmt.Printf("%s: %s is dead\n", p.Self, p.currentTerm)
+				fmt.Printf("%s: %s is dead\n", p.Endpoint.Self(), p.currentTerm)
 				p.StartPoll()
 				candidate_count++
 
@@ -158,14 +153,16 @@ func (p *Polling) startFollowerLoop() {
 	}()
 }
 
-func (p *Polling) Start() {
+func (p *Polling) Start() error {
 	p.Stop()
 	p.startFollowerLoop()
+	return nil
 }
 
-func (p *Polling) Stop() {
+func (p *Polling) Stop() error {
 	if p.currentLoop != nil {
 		close(p.currentLoop)
 	}
 	p.currentLoop = nil
+	return nil
 }
