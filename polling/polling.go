@@ -40,6 +40,10 @@ func NewPolling(url *Node, sendAlive func(Term), pollRequest func(Term) bool) *P
 	}
 }
 
+func (p *Polling) CurrentTerm() Term {
+	return p.currentTerm
+}
+
 func (p *Polling) StartPoll() {
 	newTerm := Term{
 		ID:     p.currentTerm.ID + 1,
@@ -53,7 +57,7 @@ func (p *Polling) StartPoll() {
 		fmt.Printf("%s: I'm leader of %d\n", p.Self, newTerm.ID)
 
 		p.currentTerm = newTerm
-		p.StartLeaderLoop()
+		p.startLeaderLoop()
 	} else {
 		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Self, newTerm.ID)
 	}
@@ -93,7 +97,7 @@ func (p *Polling) CanPoll(term Term) bool {
 	}
 }
 
-func (p *Polling) StartLeaderLoop() {
+func (p *Polling) startLeaderLoop() {
 	stop := make(chan struct{})
 
 	if p.currentLoop != nil {
@@ -106,7 +110,7 @@ func (p *Polling) StartLeaderLoop() {
 			select {
 			case <-p.aliveArrived:
 				fmt.Printf("%s: relegation to follower because arrived alive of %s\n", p.Self, p.currentTerm)
-				p.StartFollowerLoop()
+				p.startFollowerLoop()
 				return
 
 			case <-time.After(p.SendAliveInterval):
@@ -119,11 +123,11 @@ func (p *Polling) StartLeaderLoop() {
 	}()
 }
 
-func (p *Polling) LeaderDeathTimer() time.Duration {
+func (p *Polling) leaderDeathTimer() time.Duration {
 	return time.Duration(rand.Int63n(int64(p.LeaderDeathTimerMax-p.LeaderDeathTimerMin))) + p.LeaderDeathTimerMin
 }
 
-func (p *Polling) StartFollowerLoop() {
+func (p *Polling) startFollowerLoop() {
 	stop := make(chan struct{})
 
 	rand.Seed(time.Now().UnixNano())
@@ -142,7 +146,7 @@ func (p *Polling) StartFollowerLoop() {
 				candidate_count = 1
 				continue
 
-			case <-time.After(p.LeaderDeathTimer() * time.Duration(candidate_count)):
+			case <-time.After(p.leaderDeathTimer() * time.Duration(candidate_count)):
 				fmt.Printf("%s: %s is dead\n", p.Self, p.currentTerm)
 				p.StartPoll()
 				candidate_count++
@@ -154,7 +158,12 @@ func (p *Polling) StartFollowerLoop() {
 	}()
 }
 
-func (p *Polling) StopLoop() {
+func (p *Polling) Start() {
+	p.Stop()
+	p.startFollowerLoop()
+}
+
+func (p *Polling) Stop() {
 	if p.currentLoop != nil {
 		close(p.currentLoop)
 	}

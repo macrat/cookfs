@@ -16,7 +16,7 @@ func main() {
 
 	p := NewHTTPPolling(self, nodes)
 
-	p.StartLoop()
+	p.Start()
 
 	http.ListenAndServe(fmt.Sprintf(":%d", self.Port()), p)
 }

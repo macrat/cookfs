@@ -104,7 +104,7 @@ func (p HTTPPolling) ServePoll(w http.ResponseWriter, r *http.Request) {
 
 func (p HTTPPolling) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" && r.URL.Path == "/" {
-		x, err := json.Marshal(p.Polling.currentTerm)
+		x, err := json.Marshal(p.Polling.CurrentTerm())
 		if err != nil {
 			fmt.Fprintln(w, err.Error())
 		} else {
@@ -130,6 +130,10 @@ func (p HTTPPolling) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p HTTPPolling) StartLoop() {
-	p.Polling.StartFollowerLoop()
+func (p HTTPPolling) Start() {
+	p.Polling.Start()
+}
+
+func (p HTTPPolling) Stop() {
+	p.Polling.Stop()
 }
