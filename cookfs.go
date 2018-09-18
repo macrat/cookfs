@@ -1,49 +1,77 @@
 package main
 
 type Runnable interface {
-	Start() error
-	Stop() error
+	Run(chan struct{}) error
+}
+
+type Plugin interface {
+	Runnable
+
+	Bind(*CookFS)
 }
 
 type StorePlugin interface {
-	Runnable
+	Plugin
 
 	Save(Hash, []byte) error
 	Load(Hash) ([]byte, error)
 	Delete(Hash) error
 }
 
-type EndpointPlugin interface {
-	Runnable
+type DiscoverPlugin interface {
+	Plugin
 
-	Self() *Node
+	Self()  *Node
+	Nodes() []*Node
+}
+
+type TransmitPlugin interface {
+	Plugin
+
 	SendAlive(Term)
 	PollRequest(Term) bool
 }
 
+type ReceivePlugin interface {
+	Plugin
+}
+
 type CookFS struct {
 	Store    StorePlugin
-	Endpoint EndpointPlugin
+	Discover DiscoverPlugin
+	Transmit TransmitPlugin
+	Receive  ReceivePlugin
 
 	Polling *Polling
 }
 
-func NewCookFS(store StorePlugin, endpoint EndpointPlugin) (*CookFS, error) {
-	return &CookFS{store, endpoint, NewPolling(endpoint)}, nil
-}
-
-func (c CookFS) Start() error {
-	for _, x := range []Runnable{c.Store, c.Endpoint, c.Polling} {
-		if err := x.Start(); err != nil {
-			return err
-		}
+func NewCookFS(store StorePlugin, discover DiscoverPlugin, transmit TransmitPlugin, receive ReceivePlugin) *CookFS {
+	c := &CookFS{
+		Store:    store,
+		Discover: discover,
+		Transmit: transmit,
+		Receive:  receive,
+		Polling:  NewPolling(discover, transmit),
 	}
-	return nil
+
+	for _, p := range c.plugins() {
+		p.Bind(c)
+	}
+
+	return c
 }
 
-func (c CookFS) Stop() error {
-	for _, x := range []Runnable{c.Store, c.Endpoint, c.Polling} {
-		if err := x.Stop(); err != nil {
+func (c CookFS) plugins() []Plugin {
+	return []Plugin{c.Store, c.Discover, c.Transmit, c.Receive}
+}
+
+func (c CookFS) runnables() []Runnable {
+	return []Runnable{c.Store, c.Discover, c.Transmit, c.Receive, c.Polling}
+}
+
+func (c CookFS) Run(stop chan struct{}) error {
+	for _, x := range c.runnables() {
+		if err := x.Run(stop); err != nil {
 			return err
 		}
 	}

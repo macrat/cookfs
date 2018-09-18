@@ -10,7 +10,8 @@ import (
 type Polling struct {
 	sync.Mutex
 
-	Endpoint EndpointPlugin
+	Discover DiscoverPlugin
+	Transmit TransmitPlugin
 
 	PollingInterval     time.Duration
 	SendAliveInterval   time.Duration
@@ -20,13 +21,13 @@ type Polling struct {
 	currentTerm  Term
 	aliveArrived chan struct{}
 	lastPoll     time.Time
-
-	currentLoop chan struct{}
+	isLeader     bool
 }
 
-func NewPolling(endpoint EndpointPlugin) *Polling {
+func NewPolling(discover DiscoverPlugin, transmit TransmitPlugin) *Polling {
 	return &Polling{
-		Endpoint:            endpoint,
+		Discover:            discover,
+		Transmit:            transmit,
 		PollingInterval:     1 * time.Second,
 		SendAliveInterval:   100 * time.Millisecond,
 		LeaderDeathTimerMin: 500 * time.Millisecond,
@@ -42,19 +43,19 @@ func (p *Polling) CurrentTerm() Term {
 func (p *Polling) StartPoll() {
 	newTerm := Term{
 		ID:     p.currentTerm.ID + 1,
-		Leader: p.Endpoint.Self(),
+		Leader: p.Discover.Self(),
 	}
 
-	if p.Endpoint.PollRequest(newTerm) {
+	if p.Transmit.PollRequest(newTerm) {
 		p.Lock()
 		defer p.Unlock()
 
-		fmt.Printf("%s: I'm leader of %d\n", p.Endpoint.Self(), newTerm.ID)
+		fmt.Printf("%s: I'm leader of %d\n", p.Discover.Self(), newTerm.ID)
 
 		p.currentTerm = newTerm
-		p.startLeaderLoop()
+		p.isLeader = true
 	} else {
-		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Endpoint.Self(), newTerm.ID)
+		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Discover.Self(), newTerm.ID)
 	}
 }
 
@@ -65,7 +66,7 @@ func (p *Polling) AliveArrived(term Term) (accepted bool) {
 	}
 
 	if !term.Equals(p.currentTerm) {
-		fmt.Printf("%s: term changed to %s\n", p.Endpoint.Self(), term)
+		fmt.Printf("%s: term changed to %s\n", p.Discover.Self(), term)
 	}
 
 	p.Lock()
@@ -84,7 +85,7 @@ func (p *Polling) CanPoll(term Term) bool {
 
 		p.lastPoll = time.Now()
 
-		fmt.Printf("%s: vote to %s\n", p.Endpoint.Self(), term)
+		fmt.Printf("%s: vote to %s\n", p.Discover.Self(), term)
 
 		return true
 	} else {
@@ -92,77 +93,53 @@ func (p *Polling) CanPoll(term Term) bool {
 	}
 }
 
-func (p *Polling) startLeaderLoop() {
-	stop := make(chan struct{})
-
-	if p.currentLoop != nil {
-		close(p.currentLoop)
-	}
-	p.currentLoop = stop
-
-	go func() {
-		for {
-			select {
-			case <-p.aliveArrived:
-				fmt.Printf("%s: relegation to follower because arrived alive of %s\n", p.Endpoint.Self(), p.currentTerm)
-				p.startFollowerLoop()
-				return
-
-			case <-time.After(p.SendAliveInterval):
-				p.Endpoint.SendAlive(p.currentTerm)
-
-			case <-stop:
-				return
-			}
-		}
-	}()
-}
-
 func (p *Polling) leaderDeathTimer() time.Duration {
 	return time.Duration(rand.Int63n(int64(p.LeaderDeathTimerMax-p.LeaderDeathTimerMin))) + p.LeaderDeathTimerMin
 }
 
-func (p *Polling) startFollowerLoop() {
-	stop := make(chan struct{})
-
+func (p *Polling) Loop(stop chan struct{}) {
 	rand.Seed(time.Now().UnixNano())
 
-	if p.currentLoop != nil {
-		close(p.currentLoop)
-	}
-	p.currentLoop = stop
+	candidate_count := 1
 
-	go func() {
-		candidate_count := 1
+	for {
+		if p.isLeader {
+			select {
+			case <-p.aliveArrived:
+				fmt.Printf("%s: relegation to follower because arrived alive of %s\n", p.Discover.Self(), p.currentTerm)
+				p.isLeader = false
+				return
 
-		for {
+			case <-time.After(p.SendAliveInterval):
+				p.Transmit.SendAlive(p.currentTerm)
+
+			case <-stop:
+				return
+			}
+		} else {
 			select {
 			case <-p.aliveArrived:
 				candidate_count = 1
 				continue
 
 			case <-time.After(p.leaderDeathTimer() * time.Duration(candidate_count)):
-				fmt.Printf("%s: %s is dead\n", p.Endpoint.Self(), p.currentTerm)
+				fmt.Printf("%s: %s is dead\n", p.Discover.Self(), p.currentTerm)
 				p.StartPoll()
-				candidate_count++
+				if p.isLeader {
+					candidate_count = 1
+				} else {
+					candidate_count++
+				}
 
 			case <-stop:
 				return
 			}
 		}
-	}()
-}
-
-func (p *Polling) Start() error {
-	p.Stop()
-	p.startFollowerLoop()
-	return nil
-}
-
-func (p *Polling) Stop() error {
-	if p.currentLoop != nil {
-		close(p.currentLoop)
 	}
-	p.currentLoop = nil
+}
+
+func (p *Polling) Run(stop chan struct{}) error {
+	go p.Loop(stop)
+
 	return nil
 }

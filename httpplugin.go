@@ -7,30 +7,21 @@ import (
 	"sync"
 )
 
-type HTTPPolling struct {
-	Polling *Polling
-
-	self  *Node
-	Nodes []*Node
+type HTTPTransmitPlugin struct {
+	discover DiscoverPlugin
 }
 
-func NewHTTPPolling(self *Node, nodes []*Node) HTTPPolling {
-	p := HTTPPolling{self: self, Nodes: nodes}
-
-	p.Polling = NewPolling(p)
-
-	return p
+func (ht *HTTPTransmitPlugin) Bind(cook *CookFS) {
+	ht.discover = cook.Discover
 }
 
-func (p HTTPPolling) Self() *Node {
-	return p.self
-}
-
-func (p HTTPPolling) SendAlive(term Term) {
+func (ht *HTTPTransmitPlugin) SendAlive(term Term) {
 	wg := &sync.WaitGroup{}
 
-	for _, n := range p.Nodes {
-		if n.Equals(p.self) {
+	nodes := ht.discover.Nodes()
+
+	for _, n := range nodes {
+		if n.Equals(term.Leader) {
 			continue
 		}
 
@@ -40,9 +31,9 @@ func (p HTTPPolling) SendAlive(term Term) {
 
 			resp, err := node.Post("/alive", term)
 			if err != nil {
-				fmt.Printf("%s: failed to send alive to %s\n", p.self, node)
+				fmt.Printf("%s: failed to send alive to %s\n", term.Leader, node)
 			} else if resp.StatusCode != http.StatusNoContent {
-				fmt.Printf("%s: denied alive by %s: %s\n", p.self, node, resp.Status)
+				fmt.Printf("%s: denied alive by %s: %s\n", term.Leader, node, resp.Status)
 			}
 		}(n)
 	}
@@ -50,11 +41,13 @@ func (p HTTPPolling) SendAlive(term Term) {
 	wg.Wait()
 }
 
-func (p HTTPPolling) PollRequest(term Term) bool {
+func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
+	nodes := ht.discover.Nodes()
+
 	response := make(chan bool)
 	defer close(response)
 
-	for _, n := range p.Nodes {
+	for _, n := range nodes {
 		go func(node *Node) {
 			resp, err := node.Post("/poll", term)
 			defer func() {
@@ -65,12 +58,12 @@ func (p HTTPPolling) PollRequest(term Term) bool {
 	}
 
 	score := 0
-	for range p.Nodes {
+	for range nodes {
 		if <-response {
 			score++
 		}
 
-		if float64(score) >= float64(len(p.Nodes))/2.0 {
+		if float64(score) >= float64(len(nodes))/2.0 {
 			return true
 		}
 	}
@@ -78,37 +71,51 @@ func (p HTTPPolling) PollRequest(term Term) bool {
 	return false
 }
 
-func (p HTTPPolling) ServeAlive(w http.ResponseWriter, r *http.Request) {
+func (ht *HTTPTransmitPlugin) Run(stop chan struct{}) error {
+	return nil
+}
+
+type HTTPReceivePlugin struct {
+	self    *Node
+	polling *Polling
+}
+
+func (hr *HTTPReceivePlugin) Bind(cook *CookFS) {
+	hr.self = cook.Discover.Self()
+	hr.polling = cook.Polling
+}
+
+func (hr *HTTPReceivePlugin) serveAlive(w http.ResponseWriter, r *http.Request) {
 	var term Term
 	if err := json.NewDecoder(r.Body).Decode(&term); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if p.Polling.AliveArrived(term) {
+	if hr.polling.AliveArrived(term) {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusConflict)
 	}
 }
 
-func (p HTTPPolling) ServePoll(w http.ResponseWriter, r *http.Request) {
+func (hr *HTTPReceivePlugin) servePoll(w http.ResponseWriter, r *http.Request) {
 	var term Term
 	if err := json.NewDecoder(r.Body).Decode(&term); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if p.Polling.CanPoll(term) {
+	if hr.polling.CanPoll(term) {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusConflict)
 	}
 }
 
-func (p HTTPPolling) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (hr *HTTPReceivePlugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" && r.URL.Path == "/" {
-		x, err := json.Marshal(p.Polling.CurrentTerm())
+		x, err := json.Marshal(hr.polling.CurrentTerm())
 		if err != nil {
 			fmt.Fprintln(w, err.Error())
 		} else {
@@ -124,20 +131,17 @@ func (p HTTPPolling) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.URL.Path {
 	case "/alive":
-		p.ServeAlive(w, r)
+		hr.serveAlive(w, r)
 
 	case "/poll":
-		p.ServePoll(w, r)
+		hr.servePoll(w, r)
 
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
-func (p HTTPPolling) Start() error {
-	return p.Polling.Start()
-}
-
-func (p HTTPPolling) Stop() error {
-	return p.Polling.Stop()
+func (hr *HTTPReceivePlugin) Run(stop chan struct{}) error {
+	go http.ListenAndServe(fmt.Sprintf(":%d", hr.self.Port()), hr)
+	return nil
 }

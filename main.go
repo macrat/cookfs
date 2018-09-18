@@ -1,10 +1,29 @@
 package main
 
 import (
-	"net/http"
 	"os"
-	"fmt"
 )
+
+type DummyStore struct {}
+
+func (ds DummyStore) Bind(c *CookFS) {
+}
+
+func (ds DummyStore) Run(chan struct{}) error {
+	return nil
+}
+
+func (ds DummyStore) Save(h Hash, b []byte) error {
+	return nil
+}
+
+func (ds DummyStore) Load(h Hash) ([]byte, error) {
+	return nil, nil
+}
+
+func (ds DummyStore) Delete(h Hash) error {
+	return nil
+}
 
 func main() {
 	self := ForceParseNode(os.Args[1])
@@ -14,9 +33,20 @@ func main() {
 		nodes = append(nodes, ForceParseNode(u))
 	}
 
-	p := NewHTTPPolling(self, nodes)
+	store := DummyStore{}
+	discover := SimpleDiscoverPlugin{self, nodes}
+	transmit := &HTTPTransmitPlugin{}
+	receive := &HTTPReceivePlugin{}
 
-	p.Start()
+	cookfs := NewCookFS(store, discover, transmit, receive)
 
-	http.ListenAndServe(fmt.Sprintf(":%d", self.Port()), p)
+	stop := make(chan struct{})
+	cookfs.Run(stop)
+	for {
+		select {
+		case <-stop:
+			panic("stopped")
+			return
+		}
+	}
 }
