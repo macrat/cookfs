@@ -8,11 +8,15 @@ import (
 type Hash [sha512.Size]byte
 
 func ParseHash(raw string) (Hash, error) {
-	h, err := hex.DecodeString(raw)
+	x, err := hex.DecodeString(raw)
 	if err != nil {
 		return Hash{}, err
 	}
-	return Hash{}, err // TODO
+
+	var h Hash
+	copy(h[:], x)
+
+	return h, nil
 }
 
 func (h Hash) String() string {
