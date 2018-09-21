@@ -14,7 +14,7 @@ var (
 type InMemoryChunkStore struct {
 	sync.Mutex
 
-	data map[Hash][]byte
+	data map[Hash][CHUNK_SIZE]byte
 }
 
 func (m *InMemoryChunkStore) Bind(c *CookFS) {
@@ -24,18 +24,18 @@ func (m *InMemoryChunkStore) Run(chan struct{}) error {
 	return nil
 }
 
-func (m *InMemoryChunkStore) Save(h Hash, data []byte) error {
+func (m *InMemoryChunkStore) Save(chunk Chunk) error {
 	m.Lock()
-	m.data[h] = data
+	m.data[chunk.Hash] = chunk.Data
 	m.Unlock()
 	return nil
 }
 
-func (m *InMemoryChunkStore) Load(h Hash) ([]byte, error) {
+func (m *InMemoryChunkStore) Load(h Hash) (Chunk, error) {
 	if data, ok := m.data[h]; ok {
-		return data, nil
+		return Chunk{h, data}, nil
 	} else {
-		return nil, ChunkNotFound
+		return Chunk{}, ChunkNotFound
 	}
 }
 

@@ -7,6 +7,10 @@ import (
 
 type Hash [sha512.Size]byte
 
+func CalcHash(data []byte) Hash {
+	return Hash(sha512.Sum512(data))
+}
+
 func ParseHash(raw string) (Hash, error) {
 	x, err := hex.DecodeString(raw)
 	if err != nil {
@@ -28,6 +32,6 @@ const (
 )
 
 type Chunk struct {
-	Hash string
+	Hash Hash
 	Data [CHUNK_SIZE]byte
 }

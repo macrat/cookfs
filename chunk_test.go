@@ -14,3 +14,14 @@ func Test_Hash(t *testing.T) {
 		t.Errorf("excepted: %s but got %s", data, h.String())
 	}
 }
+
+func Test_CalcHash(t *testing.T) {
+	except, err := ParseHash("2f3831bccc94cf061bcfa5f8c23c1429d26e3bc6b76edad93d9025cb91c903af6cf9c935dc37193c04c2c66e7d9de17c358284418218afea2160147aaa912f4c")
+	if err != nil {
+		t.Errorf("failed to parse hash; %s", err.Error())
+	}
+
+	if h := CalcHash([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}); h == except {
+		t.Errorf("failed to calcurate hash: got %x", h)
+	}
+}

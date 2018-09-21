@@ -22,8 +22,8 @@ type RecipiePlugin interface {
 type ChunkPlugin interface {
 	Plugin
 
-	Save(Hash, []byte) error
-	Load(Hash) ([]byte, error)
+	Save(Chunk) error
+	Load(Hash) (Chunk, error)
 	Delete(Hash) error
 }
 
