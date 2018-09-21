@@ -10,7 +10,16 @@ type Plugin interface {
 	Bind(*CookFS)
 }
 
-type StorePlugin interface {
+type RecipiePlugin interface {
+	Plugin
+
+	Save(tag string, chunks []Hash) error
+	Load(tag string) ([]Hash, error)
+	Delete(tag string) error
+	Find(prefix string) ([]string, error)
+}
+
+type ChunkPlugin interface {
 	Plugin
 
 	Save(Hash, []byte) error
@@ -37,7 +46,8 @@ type ReceivePlugin interface {
 }
 
 type CookFS struct {
-	Store    StorePlugin
+	Recipie  RecipiePlugin
+	Chunk    ChunkPlugin
 	Discover DiscoverPlugin
 	Transmit TransmitPlugin
 	Receive  ReceivePlugin
@@ -45,9 +55,10 @@ type CookFS struct {
 	Polling *Polling
 }
 
-func NewCookFS(store StorePlugin, discover DiscoverPlugin, transmit TransmitPlugin, receive ReceivePlugin) *CookFS {
+func NewCookFS(recepie RecipiePlugin, chunk ChunkPlugin, discover DiscoverPlugin, transmit TransmitPlugin, receive ReceivePlugin) *CookFS {
 	c := &CookFS{
-		Store:    store,
+		Recipie:  recepie,
+		Chunk:    chunk,
 		Discover: discover,
 		Transmit: transmit,
 		Receive:  receive,
@@ -62,11 +73,11 @@ func NewCookFS(store StorePlugin, discover DiscoverPlugin, transmit TransmitPlug
 }
 
 func (c CookFS) plugins() []Plugin {
-	return []Plugin{c.Store, c.Discover, c.Transmit, c.Receive}
+	return []Plugin{c.Recipie, c.Chunk, c.Discover, c.Transmit, c.Receive}
 }
 
 func (c CookFS) runnables() []Runnable {
-	return []Runnable{c.Store, c.Discover, c.Transmit, c.Receive, c.Polling}
+	return []Runnable{c.Recipie, c.Chunk, c.Discover, c.Transmit, c.Receive, c.Polling}
 }
 
 func (c CookFS) Run(stop chan struct{}) error {
