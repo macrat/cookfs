@@ -6,7 +6,7 @@ import (
 
 var (
 	InvalidEntryIDError = fmt.Errorf("invalid entry ID")
-	IDNotFoundError = fmt.Errorf("ID not found error")
+	IDNotFoundError     = fmt.Errorf("ID not found error")
 )
 
 type JournalEntry struct {
@@ -70,7 +70,7 @@ func (jm *JournalManager) AddDirtyEntries(entry *JournalEntry) error {
 		return nil
 	}
 
-	if last.ID + 1 != entry.ID {
+	if last.ID+1 != entry.ID {
 		return InvalidEntryIDError
 	}
 

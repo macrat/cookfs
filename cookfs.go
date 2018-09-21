@@ -21,7 +21,7 @@ type StorePlugin interface {
 type DiscoverPlugin interface {
 	Plugin
 
-	Self()  *Node
+	Self() *Node
 	Nodes() []*Node
 }
 

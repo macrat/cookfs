@@ -1,4 +1,4 @@
-package plugin.bundled
+package main
 
 type SimpleDiscoverPlugin struct {
 	Self_  *Node

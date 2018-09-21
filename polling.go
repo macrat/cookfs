@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"math/rand"
 	"sync"
 	"time"
-	"math/rand"
-	"fmt"
 )
 
 type Polling struct {

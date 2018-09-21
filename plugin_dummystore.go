@@ -1,6 +1,6 @@
 package main
 
-type DummyStore struct {}
+type DummyStore struct{}
 
 func (ds DummyStore) Bind(c *CookFS) {
 }
