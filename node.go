@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -33,7 +34,11 @@ func (n *Node) String() string {
 }
 
 func (n *Node) Port() int {
-	port, err := strconv.Atoi((*url.URL)(n).Port())
+	_, p, err := net.SplitHostPort((*url.URL)(n).Host)
+	if err != nil {
+		return 80
+	}
+	port, err := strconv.Atoi(p)
 	if err != nil {
 		return 80
 	}

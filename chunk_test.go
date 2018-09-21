@@ -21,7 +21,7 @@ func Test_CalcHash(t *testing.T) {
 		t.Errorf("failed to parse hash; %s", err.Error())
 	}
 
-	if h := CalcHash([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}); h == except {
+	if h := CalcHash([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}); h != except {
 		t.Errorf("failed to calcurate hash: got %x", h)
 	}
 }

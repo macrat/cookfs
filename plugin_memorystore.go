@@ -17,6 +17,10 @@ type InMemoryChunkStore struct {
 	data map[Hash][CHUNK_SIZE]byte
 }
 
+func NewInMemoryChunkStore() *InMemoryChunkStore {
+	return &InMemoryChunkStore{data: make(map[Hash][CHUNK_SIZE]byte)}
+}
+
 func (m *InMemoryChunkStore) Bind(c *CookFS) {
 }
 
@@ -54,6 +58,10 @@ type InMemoryRecipieStore struct {
 	sync.Mutex
 
 	data map[string][]Hash
+}
+
+func NewInMemoryRecipieStore() *InMemoryRecipieStore {
+	return &InMemoryRecipieStore{data: make(map[string][]Hash)}
 }
 
 func (m *InMemoryRecipieStore) Bind(c *CookFS) {

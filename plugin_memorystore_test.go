@@ -2,12 +2,14 @@ package main_test
 
 import (
 	"testing"
+
+	cookfs "."
 )
 
 func Test_InMemoryChunkStore(t *testing.T) {
-	m := new(InMemoryChunkStore)
+	m := cookfs.NewInMemoryChunkStore()
 
-	chunk := Chunk{Hash{}, []byte("hello")}
+	chunk := cookfs.NewChunk(cookfs.Hash{}, []byte("hello"))
 
 	if err := m.Save(chunk); err != nil {
 		t.Errorf("failed to save chunk because; %s", err.Error())
@@ -21,7 +23,7 @@ func Test_InMemoryChunkStore(t *testing.T) {
 
 	if err := m.Delete(chunk.Hash); err != nil {
 		t.Errorf("failed to delete chunk because; %s", err.Error())
-	} else if _, err := m.Load(chunk.Hash); err != ChunkNotFound {
+	} else if _, err := m.Load(chunk.Hash); err != cookfs.ChunkNotFound {
 		t.Errorf("InMemoryChunkStore.Delete was succeed but data is not deleted")
 	}
 }
