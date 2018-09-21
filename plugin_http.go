@@ -1,4 +1,4 @@
-package main
+package plugin.bundled
 
 import (
 	"encoding/json"
