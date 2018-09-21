@@ -13,8 +13,8 @@ type Plugin interface {
 type RecipiePlugin interface {
 	Plugin
 
-	Save(tag string, chunks []Hash) error
-	Load(tag string) ([]Hash, error)
+	Save(Recipie) error
+	Load(tag string) (Recipie, error)
 	Delete(tag string) error
 	Find(prefix string) ([]string, error)
 }

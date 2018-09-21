@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha512"
 	"encoding/hex"
 )
@@ -25,6 +26,33 @@ func ParseHash(raw string) (Hash, error) {
 
 func (h Hash) String() string {
 	return hex.EncodeToString([]byte(h[:]))
+}
+
+func (h Hash) MarshalJSON() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, sha512.Size*2 + 2))
+
+	if _, err := buf.WriteRune('"'); err != nil {
+		return nil, err
+	}
+
+	if _, err := hex.NewEncoder(buf).Write(h[:]); err != nil {
+		return nil, err
+	}
+
+	if _, err := buf.WriteRune('"'); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (h *Hash) UnmarshalJSON(raw []byte) error {
+	var err error
+	_, err = hex.Decode(h[:], raw[1:len(raw)-1])
+	if err != nil {
+		return err
+	}
+	return err
 }
 
 const (

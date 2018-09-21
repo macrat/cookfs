@@ -71,18 +71,18 @@ func (m *InMemoryRecipieStore) Run(chan struct{}) error {
 	return nil
 }
 
-func (m *InMemoryRecipieStore) Save(tag string, recipie []Hash) error {
+func (m *InMemoryRecipieStore) Save(recipie Recipie) error {
 	m.Lock()
-	m.data[tag] = recipie
+	m.data[recipie.Tag] = recipie.Data
 	m.Unlock()
 	return nil
 }
 
-func (m *InMemoryRecipieStore) Load(tag string) ([]Hash, error) {
+func (m *InMemoryRecipieStore) Load(tag string) (Recipie, error) {
 	if data, ok := m.data[tag]; ok {
-		return data, nil
+		return Recipie{tag, data}, nil
 	} else {
-		return nil, RecipieNotFound
+		return Recipie{}, RecipieNotFound
 	}
 }
 
