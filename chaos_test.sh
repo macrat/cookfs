@@ -13,11 +13,23 @@ function generate() {
 
 	  echo "  cookfs_${ID}:"
 	  echo "    image: golang:alpine"
-	  echo "    volumes: ['./:/cookfs']"
+	  echo "    volumes: ['./cookfs:/cookfs']"
 	  echo "    ports: ['$((${BASE_PORT} + ${ID} - 1)):80']"
-	  echo "    command: ash -c 'cd /cookfs && go run `echo $(ls *.go | grep -v _test.go)` http://cookfs_${ID}:80 ${HOSTS}'"
+	  echo "    command: /cookfs http://cookfs_${ID}:80 ${HOSTS}"
 	  echo
 	done
+}
+
+function start_all() {
+	docker run --rm -v `pwd`:/go golang:alpine ash -c 'go build && mv go cookfs && chown 1000:1000 cookfs'
+	generate > docker-compose.yml
+	docker-compose up -d
+}
+
+function stop_all() {
+	generate > docker-compose.yml
+	docker-compose down
+	rm docker-compose.yml cookfs
 }
 
 function info() {
@@ -36,6 +48,14 @@ function stop_leader() {
 	docker-compose stop cookfs_`curl -s http://localhost:${BASE_PORT}/ | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
 }
 
+function restart_random() {
+	docker-compose restart $(echo `echo ${IDS} | grep -o '[0-9]\+' | sort -R | head -n ${1:-1} | xargs -I{} echo cookfs_{}`)
+}
+
+function restart_leader() {
+	docker-compose restart cookfs_`curl -s http://localhost:${BASE_PORT}/ | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
+}
+
 function show_help() {
 	echo "$1 COMMAND"
 	echo
@@ -44,15 +64,19 @@ function show_help() {
 	echo '  stop - stop and remove containers'
 	echo '  stop_random [number] - stop random containers'
 	echo '  stop_leader - stop leader container'
+	echo '  restart_random [number] - restart random containers'
+	echo '  restart_leader - restart leader container'
 	echo '  gen - generate docker-compose.yml'
 	echo '  info - get current term information'
 }
 
 case $1 in
-	start ) generate > docker-compose.yml && docker-compose up -d ;;
-	stop ) generate > docker-compose.yml && docker-compose down ;;
+	start ) start_all ;;
+	stop ) stop_all ;;
 	stop_random ) stop_random $2 ;;
 	stop_leader ) stop_leader ;;
+	restart_random ) restart_random $2 ;;
+	restart_leader ) restart_leader ;;
 	gen ) generate ;;
 	info ) info ;;
 	* ) show_help $0 >&2 ;;
