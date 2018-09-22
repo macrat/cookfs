@@ -44,8 +44,8 @@ func (p *Polling) CurrentTerm() Term {
 func (p *Polling) StartPoll() {
 	newTerm := TermStatus{
 		Term: Term{
-			ID:        p.currentTerm.ID + 1,
-			Leader:    p.Discover.Self(),
+			ID:     p.currentTerm.ID + 1,
+			Leader: p.Discover.Self(),
 		},
 		JournalID: p.Journal.HeadID(),
 	}

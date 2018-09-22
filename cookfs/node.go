@@ -54,6 +54,12 @@ func (n *Node) Equals(another *Node) bool {
 	return *n == *another
 }
 
+func (n *Node) Join(subpath string) *Node {
+	u := *n
+	u.Path = path.Join(u.Path, subpath)
+	return &u
+}
+
 func (n *Node) MarshalJSON() ([]byte, error) {
 	return json.Marshal(n.String())
 }
@@ -73,8 +79,22 @@ func (n *Node) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func (n *Node) Join(subpath string) *Node {
-	u := *n
-	u.Path = path.Join(u.Path, subpath)
-	return &u
+func (n *Node) MarshalYAML() (interface{}, error) {
+	return n.String(), nil
+}
+
+func (n *Node) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	u, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+
+	*n = (Node)(*u)
+
+	return nil
 }

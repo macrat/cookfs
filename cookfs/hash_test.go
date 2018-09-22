@@ -1,7 +1,10 @@
 package cookfs
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/go-yaml/yaml"
 )
 
 func Test_Hash(t *testing.T) {
@@ -38,5 +41,41 @@ func Test_CalcHash_MultiData(t *testing.T) {
 
 	if got != except {
 		t.Errorf("excepted %s but got %s", except, got)
+	}
+}
+
+func Test_Hash_JSON(t *testing.T) {
+	j := []byte("\"0102030405060708090a0b0c0d0e0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"")
+	var h Hash
+
+	if err := json.Unmarshal(j, &h); err != nil {
+		t.Errorf("failed to unmarshal json: %s", err.Error())
+	}
+
+	j2, err := json.Marshal(h)
+	if err != nil {
+		t.Errorf("failed to marshal json: %s", err.Error())
+	}
+
+	if string(j) != string(j2) {
+		t.Errorf("failed to convert to/from json: excepted %s but got %s", j, j2)
+	}
+}
+
+func Test_Hash_YAML(t *testing.T) {
+	y := []byte("0102030405060708090a0b0c0d0e0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\n")
+	var h Hash
+
+	if err := yaml.Unmarshal(y, &h); err != nil {
+		t.Errorf("failed to unmarshal yaml: %s", err.Error())
+	}
+
+	y2, err := yaml.Marshal(h)
+	if err != nil {
+		t.Errorf("failed to marshal yaml: %s", err.Error())
+	}
+
+	if string(y) != string(y2) {
+		t.Errorf("failed to convert to/from yaml: excepted %s but got %s", y, y2)
 	}
 }

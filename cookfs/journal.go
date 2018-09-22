@@ -66,10 +66,10 @@ func (j *JournalEntry) Join(next *JournalEntry) error {
 }
 
 type jsonJournalEntry struct {
-	PreviousID Hash              `json:"previous_id"`
-	EntryID    Hash              `json:"entry_id"`
-	ChainID    Hash              `json:"chain_id"`
-	Recipes    map[string]Recipe `json:"recipes"`
+	PreviousID Hash              `json:"previous_id" yaml:"previous_id"`
+	EntryID    Hash              `json:"entry_id" yaml:"entry_id"`
+	ChainID    Hash              `json:"chain_id" yaml:"chain_id"`
+	Recipes    map[string]Recipe `json:"recipes" yaml:"recipies"`
 }
 
 func (j *JournalEntry) MarshalJSON() ([]byte, error) {
@@ -90,6 +90,38 @@ func (j *JournalEntry) UnmarshalJSON(raw []byte) error {
 	var x jsonJournalEntry
 
 	if err := json.Unmarshal(raw, &x); err != nil {
+		return err
+	}
+
+	if CalcHash(x.PreviousID[:], x.EntryID[:]) != x.ChainID {
+		return fmt.Errorf("broken ID")
+	}
+
+	j.EntryID = x.EntryID
+	j.ChainID = x.ChainID
+	j.Recipes = x.Recipes
+
+	return nil
+}
+
+func (j *JournalEntry) MarshalYAML() (interface{}, error) {
+	x := jsonJournalEntry{
+		EntryID: j.EntryID,
+		ChainID: j.ChainID,
+		Recipes: j.Recipes,
+	}
+
+	if j.Previous != nil {
+		x.PreviousID = j.Previous.ChainID
+	}
+
+	return x, nil
+}
+
+func (j *JournalEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var x jsonJournalEntry
+
+	if err := unmarshal(&x); err != nil {
 		return err
 	}
 

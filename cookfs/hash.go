@@ -35,7 +35,7 @@ func (h Hash) ShortHash() string {
 }
 
 func (h Hash) String() string {
-	return hex.EncodeToString([]byte(h[:]))
+	return hex.EncodeToString(h[:])
 }
 
 func (h Hash) MarshalJSON() ([]byte, error) {
@@ -63,4 +63,23 @@ func (h *Hash) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	return err
+}
+
+func (h Hash) MarshalYAML() (interface{}, error) {
+	return hex.EncodeToString(h[:]), nil
+}
+
+func (h *Hash) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var raw string
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	x, err := hex.DecodeString(raw)
+	if err != nil {
+		return err
+	}
+	copy(h[:], x)
+
+	return nil
 }

@@ -28,5 +28,5 @@ func (t Term) OlderThan(another Term) bool {
 type TermStatus struct {
 	Term
 
-	JournalID Hash `json:"journal"`
+	JournalID Hash `json:"journal" yaml:"journal"`
 }

@@ -1,7 +1,10 @@
 package cookfs
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/go-yaml/yaml"
 )
 
 var (
@@ -53,5 +56,41 @@ func Test_Node_Join(t *testing.T) {
 
 	if !joined.Equals(ForceParseNode("http://example.com/path/to/foo/bar")) {
 		t.Errorf("failed to join; got %s", joined)
+	}
+}
+
+func Test_Node_JSON(t *testing.T) {
+	j := []byte("\"http://localhost:8080/test\"")
+	n := &Node{}
+
+	if err := json.Unmarshal(j, n); err != nil {
+		t.Errorf("failed to unmarshal json: %s", err.Error())
+	}
+
+	j2, err := json.Marshal(n)
+	if err != nil {
+		t.Errorf("failed to marshal json: %s", err.Error())
+	}
+
+	if string(j) != string(j2) {
+		t.Errorf("failed to convert to/from json: excepted %s but got %s", j, j2)
+	}
+}
+
+func Test_Node_YAML(t *testing.T) {
+	y := []byte("http://localhost:8080/test\n")
+	n := &Node{}
+
+	if err := yaml.Unmarshal(y, n); err != nil {
+		t.Errorf("failed to unmarshal yaml: %s", err.Error())
+	}
+
+	y2, err := yaml.Marshal(n)
+	if err != nil {
+		t.Errorf("failed to marshal yaml: %s", err.Error())
+	}
+
+	if string(y) != string(y2) {
+		t.Errorf("failed to convert to/from yaml: excepted %s but got %s", y, y2)
 	}
 }

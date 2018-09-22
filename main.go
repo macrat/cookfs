@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"./cookfs"
+	"github.com/macrat/cookfs/cookfs"
 
 	"net/http"
 	_ "net/http/pprof"
