@@ -1,4 +1,4 @@
-package main
+package cookfs
 
 const (
 	CHUNK_SIZE = 64

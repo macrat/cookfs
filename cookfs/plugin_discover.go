@@ -1,4 +1,4 @@
-package main
+package cookfs
 
 type SimpleDiscoverPlugin struct {
 	Self_  *Node

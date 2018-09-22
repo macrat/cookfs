@@ -1,3 +1,3 @@
-package main
+package cookfs
 
 type Recipe []Hash

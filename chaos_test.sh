@@ -14,15 +14,15 @@ function generate() {
 
 	  echo "  cookfs_${ID}:"
 	  echo "    image: golang"
-	  echo "    volumes: ['./cookfs:/cookfs:ro']"
+	  echo "    volumes: ['./cookfs_server:/cookfs_server:ro']"
 	  echo "    ports: ['$((${BASE_PORT} + ${ID})):80', '$((${PROF_PORT} + ${ID})):3000']"
-	  echo "    command: /cookfs http://cookfs_${ID}:80 ${HOSTS}"
+	  echo "    command: /cookfs_server http://cookfs_${ID}:80 ${HOSTS}"
 	  echo
 	done
 }
 
 function start_all() {
-	docker run --rm -v `pwd`:/usr/src/cookfs -w /usr/src/cookfs golang bash -c 'go get -d && go build && chown 1000:1000 cookfs'
+	docker run --rm -v `pwd`:/usr/src/cookfs -w /usr/src/cookfs golang bash -c 'go get -d && go build -o cookfs_server && chown 1000:1000 cookfs_server'
 	generate > docker-compose.yml
 	docker-compose up -d
 }
@@ -30,7 +30,7 @@ function start_all() {
 function stop_all() {
 	generate > docker-compose.yml
 	docker-compose down
-	rm docker-compose.yml cookfs
+	rm docker-compose.yml cookfs_server
 }
 
 function info() {

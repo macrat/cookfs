@@ -3,32 +3,34 @@ package main
 import (
 	"os"
 
+	"./cookfs"
+
 	"net/http"
 	_ "net/http/pprof"
 )
 
 func main() {
-	self := ForceParseNode(os.Args[1])
+	self := cookfs.ForceParseNode(os.Args[1])
 
-	nodes := []*Node{self}
+	nodes := []*cookfs.Node{self}
 	for _, u := range os.Args[2:] {
-		nodes = append(nodes, ForceParseNode(u))
+		nodes = append(nodes, cookfs.ForceParseNode(u))
 	}
 
-	recipe := NewInMemoryRecipeStore()
-	chunk := NewInMemoryChunkStore()
-	discover := SimpleDiscoverPlugin{self, nodes}
-	transmit := &HTTPTransmitPlugin{}
-	receive := NewHTTPReceivePlugin()
+	recipe := cookfs.NewInMemoryRecipeStore()
+	chunk := cookfs.NewInMemoryChunkStore()
+	discover := cookfs.SimpleDiscoverPlugin{self, nodes}
+	transmit := &cookfs.HTTPTransmitPlugin{}
+	receive := cookfs.NewHTTPReceivePlugin()
 
-	cookfs := NewCookFS(recipe, chunk, discover, transmit, receive)
+	c := cookfs.NewCookFS(recipe, chunk, discover, transmit, receive)
 
 	go func() {
 		http.ListenAndServe(":3000", nil)
 	}()
 
 	stop := make(chan struct{})
-	cookfs.Run(stop)
+	c.Run(stop)
 	for {
 		select {
 		case <-stop:
