@@ -33,10 +33,10 @@ func Test_InMemoryRecipieStore(t *testing.T) {
 
 	a := cookfs.Recipie{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world"))}
 	b := cookfs.Recipie{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world")), cookfs.CalcHash([]byte("foobar"))}
-	recipies := []struct{
+	recipies := []struct {
 		tag     string
 		recipie cookfs.Recipie
-	} {
+	}{
 		{"/tag/of/foobar", a},
 		{"/tag/to/hogefuga", b},
 	}
@@ -64,7 +64,7 @@ func Test_InMemoryRecipieStore(t *testing.T) {
 	found_tests := []struct {
 		prefix string
 		except []string
-	} {
+	}{
 		{"/tag/", []string{"/tag/of/foobar", "/tag/to/hogefuga"}},
 		{"/tag/of/", []string{"/tag/of/foobar"}},
 	}

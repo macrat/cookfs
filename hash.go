@@ -39,7 +39,7 @@ func (h Hash) String() string {
 }
 
 func (h Hash) MarshalJSON() ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, sha512.Size*2 + 2))
+	buf := bytes.NewBuffer(make([]byte, 0, sha512.Size*2+2))
 
 	if _, err := buf.WriteRune('"'); err != nil {
 		return nil, err

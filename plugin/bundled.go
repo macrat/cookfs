@@ -28,6 +28,6 @@ func (bp BundledPlugin) GetEndpoint(t PluginType) (Plugin, error) {
 	if result == nil {
 		return nil, fmt.Errorf("%s is not implemented %s", bp.Name(), pt)
 	} else {
-		return result. nil
+		return result.nil
 	}
 }
