@@ -12,6 +12,7 @@ type Polling struct {
 
 	Discover DiscoverPlugin
 	Transmit TransmitPlugin
+	Journal  *Journal
 
 	PollingInterval   time.Duration
 	SendAliveInterval time.Duration
@@ -25,10 +26,8 @@ type Polling struct {
 	isLeader     bool
 }
 
-func NewPolling(discover DiscoverPlugin, transmit TransmitPlugin) *Polling {
+func NewPolling() *Polling {
 	return &Polling{
-		Discover:          discover,
-		Transmit:          transmit,
 		PollingInterval:   500 * time.Millisecond,
 		SendAliveInterval: 100 * time.Millisecond,
 		LeaderDeathTimer:  400 * time.Millisecond,
@@ -43,9 +42,12 @@ func (p *Polling) CurrentTerm() Term {
 }
 
 func (p *Polling) StartPoll() {
-	newTerm := Term{
-		ID:     p.currentTerm.ID + 1,
-		Leader: p.Discover.Self(),
+	newTerm := TermStatus{
+		Term: Term{
+			ID:        p.currentTerm.ID + 1,
+			Leader:    p.Discover.Self(),
+		},
+		JournalID: p.Journal.HeadID(),
 	}
 
 	if p.Transmit.PollRequest(newTerm) {
@@ -54,16 +56,16 @@ func (p *Polling) StartPoll() {
 
 		fmt.Printf("%s: I'm leader of %d\n", p.Discover.Self(), newTerm.ID)
 
-		p.currentTerm = newTerm
+		p.currentTerm = newTerm.Term
 		p.isLeader = true
 	} else {
 		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Discover.Self(), newTerm.ID)
 	}
 }
 
-func (p *Polling) AliveArrived(term Term) (accepted bool) {
+func (p *Polling) AliveArrived(term TermStatus) (accepted bool) {
 	if !term.NewerThan(p.currentTerm) && !term.Equals(p.currentTerm) {
-		fmt.Printf("denied: %s -> %s\n", p.currentTerm, term)
+		fmt.Printf("%s: denied: %s -> %s\n", p.Discover.Self(), p.currentTerm, term)
 		return false
 	}
 
@@ -71,17 +73,24 @@ func (p *Polling) AliveArrived(term Term) (accepted bool) {
 		fmt.Printf("%s: term changed to %s\n", p.Discover.Self(), term)
 	}
 
+	if term.JournalID != (Hash{}) {
+		if err := p.Journal.Commit(term.JournalID); err != nil && err != JournalAlreadyCommittedError {
+			fmt.Printf("%s: not chained journal: %s\n", p.Discover.Self(), term.JournalID.ShortHash())
+			return false
+		}
+	}
+
 	p.Lock()
 	defer p.Unlock()
 
-	p.currentTerm = term
+	p.currentTerm = term.Term
 	p.aliveArrived <- struct{}{}
 
 	return true
 }
 
-func (p *Polling) CanPoll(term Term) bool {
-	if term.NewerThan(p.currentTerm) && p.lastPoll.Add(p.PollingInterval).Before(time.Now()) {
+func (p *Polling) CanPoll(term TermStatus) bool {
+	if term.NewerThan(p.currentTerm) && p.lastPoll.Add(p.PollingInterval).Before(time.Now()) && p.Journal.HeadID() == term.JournalID {
 		p.Lock()
 		defer p.Unlock()
 
@@ -109,7 +118,7 @@ func (p *Polling) Loop(stop chan struct{}) {
 				return
 
 			case <-time.After(p.SendAliveInterval):
-				p.Transmit.SendAlive(p.currentTerm)
+				p.Transmit.SendAlive(TermStatus{Term: p.currentTerm, JournalID: p.Journal.HeadID()})
 
 			case <-stop:
 				return
@@ -148,6 +157,9 @@ func (p *Polling) IsLeader() bool {
 }
 
 func (p *Polling) Bind(c *CookFS) {
+	p.Discover = c.Discover
+	p.Transmit = c.Transmit
+	p.Journal = c.Journal
 }
 
 func (p *Polling) Run(stop chan struct{}) error {

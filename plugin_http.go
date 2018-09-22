@@ -23,7 +23,7 @@ func (ht *HTTPTransmitPlugin) Bind(cook *CookFS) {
 	ht.discover = cook.Discover
 }
 
-func (ht *HTTPTransmitPlugin) SendAlive(term Term) {
+func (ht *HTTPTransmitPlugin) SendAlive(term TermStatus) {
 	nodes := ht.discover.Nodes()
 
 	data, _ := json.Marshal(term)
@@ -76,7 +76,7 @@ func (ht *HTTPTransmitPlugin) polling(endpoint string, data interface{}) bool {
 	return false
 }
 
-func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
+func (ht *HTTPTransmitPlugin) PollRequest(term TermStatus) bool {
 	return ht.polling("/leader/poll", term)
 }
 
@@ -130,7 +130,7 @@ func (hr *HTTPReceivePlugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (hr *HTTPReceivePlugin) serveAlive(w http.ResponseWriter, r *http.Request) {
-	var term Term
+	var term TermStatus
 	if err := json.NewDecoder(r.Body).Decode(&term); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -144,7 +144,7 @@ func (hr *HTTPReceivePlugin) serveAlive(w http.ResponseWriter, r *http.Request) 
 }
 
 func (hr *HTTPReceivePlugin) servePoll(w http.ResponseWriter, r *http.Request) {
-	var term Term
+	var term TermStatus
 	if err := json.NewDecoder(r.Body).Decode(&term); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return

@@ -37,8 +37,8 @@ type DiscoverPlugin interface {
 type TransmitPlugin interface {
 	Plugin
 
-	SendAlive(Term)
-	PollRequest(Term) bool
+	SendAlive(TermStatus)
+	PollRequest(TermStatus) bool
 	AddJournalEntry(*JournalEntry) bool
 	CommitJournal(Hash) bool
 }
@@ -65,7 +65,7 @@ func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin,
 		Discover: discover,
 		Transmit: transmit,
 		Receive:  receive,
-		Polling:  NewPolling(discover, transmit),
+		Polling:  NewPolling(),
 		Journal:  NewJournal(),
 	}
 

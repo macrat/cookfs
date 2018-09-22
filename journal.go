@@ -302,3 +302,34 @@ func (j *Journal) AddRecipe(tag string, recipe Recipe) error {
 
 	return nil
 }
+
+func (j *Journal) IsCommitted(h Hash) bool {
+	for x := j.chain.Head; x != nil; x = x.Previous {
+		if x.ChainID == h {
+			return true
+		}
+	}
+	return false
+}
+
+func (j *Journal) IsDirty(h Hash) bool {
+	if j.chain.Dirty == nil {
+		return false
+	}
+
+	for x := j.chain.Dirty; x != j.chain.Head; x = x.Previous {
+		if x.ChainID == h {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (j *Journal) HeadID() Hash {
+	if j.chain.Head == nil {
+		return Hash{}
+	} else {
+		return j.chain.Head.ChainID
+	}
+}

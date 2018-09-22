@@ -24,3 +24,9 @@ func (t Term) NewerThan(another Term) bool {
 func (t Term) OlderThan(another Term) bool {
 	return t.ID < another.ID
 }
+
+type TermStatus struct {
+	Term
+
+	JournalID Hash `json:"journal"`
+}
