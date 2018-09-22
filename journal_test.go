@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -70,6 +71,27 @@ func Test_JournalEntry_Join(t *testing.T) {
 
 	if err := a1.Join(a2); err != nil {
 		t.Errorf("failed join a2 to after of a1; %s", err.Error())
+	}
+}
+
+func Test_JournalEntry_Json(t *testing.T) {
+	x := NewJournalEntry(nil, map[string]Recipie{})
+
+	j, err := json.Marshal(x)
+	if err != nil {
+		t.Errorf("failed to marshal json: %s", err.Error())
+	}
+
+	y := &JournalEntry{}
+	if err = json.Unmarshal(j, y); err != nil {
+		t.Errorf("failed to unmarshal json: %s", err.Error())
+	}
+
+	if x.ChainID != y.ChainID {
+		t.Errorf("x.ChainID(%v) != y.ChainID(%v)", x.ChainID, y.ChainID)
+	}
+	if x.EntryID != y.EntryID {
+		t.Errorf("x.EntryID(%v) != y.EntryID(%v)", x.EntryID, y.EntryID)
 	}
 }
 

@@ -64,6 +64,45 @@ func (j *JournalEntry) Join(next *JournalEntry) error {
 	return nil
 }
 
+type jsonJournalEntry struct {
+	PreviousID Hash               `json:"previous_id"`
+	EntryID    Hash               `json:"entry_id"`
+	ChainID    Hash               `json:"chain_id"`
+	Recipies   map[string]Recipie `json:"recipies"`
+}
+
+func (j *JournalEntry) MarshalJSON() ([]byte, error) {
+	x := jsonJournalEntry {
+		EntryID: j.EntryID,
+		ChainID: j.ChainID,
+		Recipies: j.Recipies,
+	}
+
+	if j.Previous != nil {
+		x.PreviousID = j.Previous.ChainID
+	}
+
+	return json.Marshal(x)
+}
+
+func (j *JournalEntry) UnmarshalJSON(raw []byte) error {
+	var x jsonJournalEntry
+
+	if err := json.Unmarshal(raw, &x); err != nil {
+		return err
+	}
+
+	if CalcHash(x.PreviousID[:], x.EntryID[:]) != x.ChainID {
+		return fmt.Errorf("broken ID")
+	}
+
+	j.EntryID = x.EntryID
+	j.ChainID = x.ChainID
+	j.Recipies = x.Recipies
+
+	return nil
+}
+
 type JournalManager struct {
 	Head  *JournalEntry
 	Dirty *JournalEntry
