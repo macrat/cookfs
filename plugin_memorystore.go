@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	ChunkNotFound   = fmt.Errorf("no such chunk")
-	RecipieNotFound = fmt.Errorf("no such recipie")
+	ChunkNotFound  = fmt.Errorf("no such chunk")
+	RecipeNotFound = fmt.Errorf("no such recipe")
 )
 
 type InMemoryChunkStore struct {
@@ -54,41 +54,41 @@ func (m *InMemoryChunkStore) Delete(h Hash) error {
 	return nil
 }
 
-type InMemoryRecipieStore struct {
+type InMemoryRecipeStore struct {
 	sync.Mutex
 
-	data map[string]Recipie
+	data map[string]Recipe
 }
 
-func NewInMemoryRecipieStore() *InMemoryRecipieStore {
-	return &InMemoryRecipieStore{data: make(map[string]Recipie)}
+func NewInMemoryRecipeStore() *InMemoryRecipeStore {
+	return &InMemoryRecipeStore{data: make(map[string]Recipe)}
 }
 
-func (m *InMemoryRecipieStore) Bind(c *CookFS) {
+func (m *InMemoryRecipeStore) Bind(c *CookFS) {
 }
 
-func (m *InMemoryRecipieStore) Run(chan struct{}) error {
+func (m *InMemoryRecipeStore) Run(chan struct{}) error {
 	return nil
 }
 
-func (m *InMemoryRecipieStore) Save(tag string, recipie Recipie) error {
+func (m *InMemoryRecipeStore) Save(tag string, recipe Recipe) error {
 	m.Lock()
-	m.data[tag] = recipie
+	m.data[tag] = recipe
 	m.Unlock()
 	return nil
 }
 
-func (m *InMemoryRecipieStore) Load(tag string) (Recipie, error) {
+func (m *InMemoryRecipeStore) Load(tag string) (Recipe, error) {
 	if data, ok := m.data[tag]; ok {
 		return data, nil
 	} else {
-		return Recipie{}, RecipieNotFound
+		return Recipe{}, RecipeNotFound
 	}
 }
 
-func (m *InMemoryRecipieStore) Delete(tag string) error {
+func (m *InMemoryRecipeStore) Delete(tag string) error {
 	if _, ok := m.data[tag]; !ok {
-		return RecipieNotFound
+		return RecipeNotFound
 	}
 
 	m.Lock()
@@ -97,7 +97,7 @@ func (m *InMemoryRecipieStore) Delete(tag string) error {
 	return nil
 }
 
-func (m *InMemoryRecipieStore) Find(prefix string) ([]string, error) {
+func (m *InMemoryRecipeStore) Find(prefix string) ([]string, error) {
 	var result []string
 
 	for tag := range m.data {

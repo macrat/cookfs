@@ -12,13 +12,13 @@ func main() {
 		nodes = append(nodes, ForceParseNode(u))
 	}
 
-	recipie := new(InMemoryRecipieStore)
+	recipe := new(InMemoryRecipeStore)
 	chunk := new(InMemoryChunkStore)
 	discover := SimpleDiscoverPlugin{self, nodes}
 	transmit := &HTTPTransmitPlugin{}
 	receive := NewHTTPReceivePlugin()
 
-	cookfs := NewCookFS(recipie, chunk, discover, transmit, receive)
+	cookfs := NewCookFS(recipe, chunk, discover, transmit, receive)
 
 	stop := make(chan struct{})
 	cookfs.Run(stop)

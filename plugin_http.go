@@ -172,7 +172,7 @@ func (hr *HTTPReceivePlugin) serveJournalList(w http.ResponseWriter, r *http.Req
 		Dirty     []*JournalEntry `json:"dirty"`
 	}{
 		Committed: hr.journal.GetCommitted(20),
-		Dirty: hr.journal.GetDirty(),
+		Dirty:     hr.journal.GetDirty(),
 	}
 
 	x, err := json.Marshal(list)

@@ -26,34 +26,34 @@ func Test_InMemoryChunkStore(t *testing.T) {
 	}
 }
 
-func Test_InMemoryRecipieStore(t *testing.T) {
-	m := NewInMemoryRecipieStore()
+func Test_InMemoryRecipeStore(t *testing.T) {
+	m := NewInMemoryRecipeStore()
 
-	a := Recipie{CalcHash([]byte("hello")), CalcHash([]byte("world"))}
-	b := Recipie{CalcHash([]byte("hello")), CalcHash([]byte("world")), CalcHash([]byte("foobar"))}
-	recipies := []struct {
-		tag     string
-		recipie Recipie
+	a := Recipe{CalcHash([]byte("hello")), CalcHash([]byte("world"))}
+	b := Recipe{CalcHash([]byte("hello")), CalcHash([]byte("world")), CalcHash([]byte("foobar"))}
+	recipes := []struct {
+		tag    string
+		recipe Recipe
 	}{
 		{"/tag/of/foobar", a},
 		{"/tag/to/hogefuga", b},
 	}
 
-	for _, x := range recipies {
-		if err := m.Save(x.tag, x.recipie); err != nil {
-			t.Errorf("failed to save recipie because; %s", err.Error())
+	for _, x := range recipes {
+		if err := m.Save(x.tag, x.recipe); err != nil {
+			t.Errorf("failed to save recipe because; %s", err.Error())
 		}
 	}
 
-	for _, x := range recipies {
+	for _, x := range recipes {
 		if got, err := m.Load(x.tag); err != nil {
-			t.Errorf("failed to load recipie because; %s", err.Error())
-		} else if len(got) != len(x.recipie) {
-			t.Errorf("failed to load recipie; excepted data is %#v but got %#v", x.recipie, got)
+			t.Errorf("failed to load recipe because; %s", err.Error())
+		} else if len(got) != len(x.recipe) {
+			t.Errorf("failed to load recipe; excepted data is %#v but got %#v", x.recipe, got)
 		} else {
 			for i, y := range got {
-				if y != x.recipie[i] {
-					t.Errorf("failed to load recipie; excepted data is %#v but got %#v", x.recipie, got)
+				if y != x.recipe[i] {
+					t.Errorf("failed to load recipe; excepted data is %#v but got %#v", x.recipe, got)
 				}
 			}
 		}
@@ -70,7 +70,7 @@ func Test_InMemoryRecipieStore(t *testing.T) {
 		if founds, err := m.Find(test.prefix); err != nil {
 			t.Errorf("failed to find tag because; %s", err.Error())
 		} else if len(founds) != len(test.except) {
-			t.Errorf("InMemoryRecipieStore.Find(%#v) was returns unexcepted result; %#v", test.prefix, founds)
+			t.Errorf("InMemoryRecipeStore.Find(%#v) was returns unexcepted result; %#v", test.prefix, founds)
 		} else {
 			for _, x := range test.except {
 				ok := false
@@ -81,7 +81,7 @@ func Test_InMemoryRecipieStore(t *testing.T) {
 					}
 				}
 				if !ok {
-					t.Errorf("InMemoryRecipieStore.Find(%#v) was returns unexcepted result; %#v", test.prefix, founds)
+					t.Errorf("InMemoryRecipeStore.Find(%#v) was returns unexcepted result; %#v", test.prefix, founds)
 					break
 				}
 			}

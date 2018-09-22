@@ -7,7 +7,7 @@ import (
 )
 
 func Test_calcEntryID(t *testing.T) {
-	recipies := map[string]Recipie{
+	recipes := map[string]Recipe{
 		"/foo": {CalcHash([]byte("hello"))},
 		"/bar": {CalcHash([]byte("world"))},
 	}
@@ -15,7 +15,7 @@ func Test_calcEntryID(t *testing.T) {
 	except := CalcHash([]byte(
 		fmt.Sprintf("{\"/bar\":[\"%s\"],\"/foo\":[\"%s\"]}", CalcHash([]byte("world")), CalcHash([]byte("hello"))),
 	))
-	got := calcEntryID(recipies)
+	got := calcEntryID(recipes)
 
 	if got != except {
 		t.Errorf("unexcepted entryID; excepted %s but got %s", except, got)
@@ -35,9 +35,9 @@ func Test_calcChainID(t *testing.T) {
 }
 
 func Test_JournalEntry_IsPreviousOf(t *testing.T) {
-	a1 := NewJournalEntry(nil, map[string]Recipie{})
-	a2 := NewJournalEntry(a1, map[string]Recipie{})
-	b1 := NewJournalEntry(nil, map[string]Recipie{})
+	a1 := NewJournalEntry(nil, map[string]Recipe{})
+	a2 := NewJournalEntry(a1, map[string]Recipe{})
+	b1 := NewJournalEntry(nil, map[string]Recipe{})
 
 	if !a1.IsPreviousOf(a2) {
 		t.Errorf("a1 is previous of a2 but IsPreviousOf said that's not it")
@@ -61,8 +61,8 @@ func Test_JournalEntry_IsPreviousOf(t *testing.T) {
 }
 
 func Test_JournalEntry_Join(t *testing.T) {
-	a1 := NewJournalEntry(nil, map[string]Recipie{})
-	a2 := NewJournalEntry(a1, map[string]Recipie{})
+	a1 := NewJournalEntry(nil, map[string]Recipe{})
+	a2 := NewJournalEntry(a1, map[string]Recipe{})
 	a2.Previous = nil
 
 	if err := a2.Join(a1); err == nil {
@@ -75,7 +75,7 @@ func Test_JournalEntry_Join(t *testing.T) {
 }
 
 func Test_JournalEntry_Json(t *testing.T) {
-	x := NewJournalEntry(nil, map[string]Recipie{})
+	x := NewJournalEntry(nil, map[string]Recipe{})
 
 	j, err := json.Marshal(x)
 	if err != nil {
@@ -98,33 +98,33 @@ func Test_JournalEntry_Json(t *testing.T) {
 func Test_JournalManager(t *testing.T) {
 	jm := JournalManager{}
 
-	err := jm.AddRecipies(map[string]Recipie{
+	err := jm.AddRecipes(map[string]Recipe{
 		"/tag/to/one": {CalcHash([]byte("hello"))},
 	})
 	if err != nil {
-		t.Errorf("failed to add recipies into JournalManager; %s", err.Error())
+		t.Errorf("failed to add recipes into JournalManager; %s", err.Error())
 	}
 	if jm.Dirty == nil {
-		t.Errorf("failed to add recipies into JournalManager; Dirty is nil")
+		t.Errorf("failed to add recipes into JournalManager; Dirty is nil")
 	}
 	if jm.Head != nil {
 		t.Errorf("not committed yet but Head is already not nil")
 	}
 
-	err = jm.AddRecipies(map[string]Recipie{
+	err = jm.AddRecipes(map[string]Recipe{
 		"/tag/to/two": {CalcHash([]byte("world"))},
 	})
 	if err != nil {
-		t.Errorf("failed to add recipies into JournalManager; %s", err.Error())
+		t.Errorf("failed to add recipes into JournalManager; %s", err.Error())
 	}
 	if jm.Dirty == nil {
-		t.Errorf("failed to add recipies into JournalManager; Dirty is nil")
+		t.Errorf("failed to add recipes into JournalManager; Dirty is nil")
 	}
 	if jm.Head != nil {
 		t.Errorf("not committed yet but Head is already not nil")
 	}
 
-	err = jm.AddEntry(NewJournalEntry(nil, map[string]Recipie{
+	err = jm.AddEntry(NewJournalEntry(nil, map[string]Recipe{
 		"/tag/to/not-chained": {CalcHash([]byte("foobar"))},
 	}))
 	if err == nil {
@@ -133,24 +133,24 @@ func Test_JournalManager(t *testing.T) {
 		t.Errorf("couses unexcepted error on adding not chained entry: %s", err.Error())
 	}
 
-	err = jm.AddEntry(NewJournalEntry(jm.Dirty.Previous, map[string]Recipie{
+	err = jm.AddEntry(NewJournalEntry(jm.Dirty.Previous, map[string]Recipe{
 		"/tag/to/three": {CalcHash([]byte("world"))},
 	}))
 	if err != nil {
-		t.Errorf("failed to add recipies into JournalManager; %s", err.Error())
+		t.Errorf("failed to add recipes into JournalManager; %s", err.Error())
 	}
 	if jm.Dirty == nil {
-		t.Errorf("failed to add recipies into JournalManager; Dirty is nil")
+		t.Errorf("failed to add recipes into JournalManager; Dirty is nil")
 	}
 	if jm.Head != nil {
 		t.Errorf("not committed yet but Head is already not nil")
 	}
 
-	if _, ok := jm.Dirty.Recipies["/tag/to/three"]; !ok {
-		t.Errorf("added entry was not found; found recipies is %v", jm.Dirty.Recipies)
+	if _, ok := jm.Dirty.Recipes["/tag/to/three"]; !ok {
+		t.Errorf("added entry was not found; found recipes is %v", jm.Dirty.Recipes)
 	}
-	if _, ok := jm.Dirty.Previous.Recipies["/tag/to/one"]; !ok {
-		t.Errorf("added entry was not found; found recipies is %v", jm.Dirty.Previous.Recipies)
+	if _, ok := jm.Dirty.Previous.Recipes["/tag/to/one"]; !ok {
+		t.Errorf("added entry was not found; found recipes is %v", jm.Dirty.Previous.Recipes)
 	}
 
 	if len(jm.GetCommitted(10)) != 0 {

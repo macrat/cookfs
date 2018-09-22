@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	RecipiesIsEmptyError         = fmt.Errorf("can't add empty recipies")
+	RecipesIsEmptyError          = fmt.Errorf("can't add empty recipes")
 	JournalAlreadyCommittedError = fmt.Errorf("journal entry was already committed")
 	NoSuchJournalError           = fmt.Errorf("no such journal entry entry")
 	JournalIsNotChainedError     = fmt.Errorf("jurnal entry is not chained")
@@ -17,11 +17,11 @@ type JournalEntry struct {
 	EntryID  Hash
 	ChainID  Hash
 
-	Recipies map[string]Recipie
+	Recipes map[string]Recipe
 }
 
-func calcEntryID(recipies map[string]Recipie) Hash {
-	j, _ := json.Marshal(recipies)
+func calcEntryID(recipes map[string]Recipe) Hash {
+	j, _ := json.Marshal(recipes)
 	return CalcHash(j)
 }
 
@@ -29,8 +29,8 @@ func calcChainID(previousChainID, nextEntryID Hash) Hash {
 	return CalcHash(previousChainID[:], nextEntryID[:])
 }
 
-func NewJournalEntry(previous *JournalEntry, recipies map[string]Recipie) *JournalEntry {
-	entryID := calcEntryID(recipies)
+func NewJournalEntry(previous *JournalEntry, recipes map[string]Recipe) *JournalEntry {
+	entryID := calcEntryID(recipes)
 
 	prevID := Hash{}
 	if previous != nil {
@@ -42,7 +42,7 @@ func NewJournalEntry(previous *JournalEntry, recipies map[string]Recipie) *Journ
 		Previous: previous,
 		EntryID:  entryID,
 		ChainID:  chainID,
-		Recipies: recipies,
+		Recipes:  recipes,
 	}
 }
 
@@ -65,17 +65,17 @@ func (j *JournalEntry) Join(next *JournalEntry) error {
 }
 
 type jsonJournalEntry struct {
-	PreviousID Hash               `json:"previous_id"`
-	EntryID    Hash               `json:"entry_id"`
-	ChainID    Hash               `json:"chain_id"`
-	Recipies   map[string]Recipie `json:"recipies"`
+	PreviousID Hash              `json:"previous_id"`
+	EntryID    Hash              `json:"entry_id"`
+	ChainID    Hash              `json:"chain_id"`
+	Recipes    map[string]Recipe `json:"recipes"`
 }
 
 func (j *JournalEntry) MarshalJSON() ([]byte, error) {
 	x := jsonJournalEntry{
-		EntryID:  j.EntryID,
-		ChainID:  j.ChainID,
-		Recipies: j.Recipies,
+		EntryID: j.EntryID,
+		ChainID: j.ChainID,
+		Recipes: j.Recipes,
 	}
 
 	if j.Previous != nil {
@@ -98,7 +98,7 @@ func (j *JournalEntry) UnmarshalJSON(raw []byte) error {
 
 	j.EntryID = x.EntryID
 	j.ChainID = x.ChainID
-	j.Recipies = x.Recipies
+	j.Recipes = x.Recipes
 
 	return nil
 }
@@ -136,12 +136,12 @@ func (j *JournalManager) AddEntry(entry *JournalEntry) error {
 	return JournalIsNotChainedError
 }
 
-func (j *JournalManager) AddRecipies(recipies map[string]Recipie) error {
-	if recipies == nil || len(recipies) == 0 {
-		return fmt.Errorf("can't add empty recipies")
+func (j *JournalManager) AddRecipes(recipes map[string]Recipe) error {
+	if recipes == nil || len(recipes) == 0 {
+		return fmt.Errorf("can't add empty recipes")
 	}
 
-	return j.AddEntry(NewJournalEntry(j.Dirty, recipies))
+	return j.AddEntry(NewJournalEntry(j.Dirty, recipes))
 }
 
 func (j *JournalManager) Commit(chainID Hash) error {
