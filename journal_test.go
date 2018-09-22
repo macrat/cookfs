@@ -95,36 +95,36 @@ func Test_JournalEntry_Json(t *testing.T) {
 	}
 }
 
-func Test_JournalManager(t *testing.T) {
-	jm := JournalManager{}
+func Test_JournalChain(t *testing.T) {
+	jc := JournalChain{}
 
-	err := jm.AddRecipes(map[string]Recipe{
+	err := jc.AddRecipes(map[string]Recipe{
 		"/tag/to/one": {CalcHash([]byte("hello"))},
 	})
 	if err != nil {
 		t.Errorf("failed to add recipes into JournalManager; %s", err.Error())
 	}
-	if jm.Dirty == nil {
+	if jc.Dirty == nil {
 		t.Errorf("failed to add recipes into JournalManager; Dirty is nil")
 	}
-	if jm.Head != nil {
+	if jc.Head != nil {
 		t.Errorf("not committed yet but Head is already not nil")
 	}
 
-	err = jm.AddRecipes(map[string]Recipe{
+	err = jc.AddRecipes(map[string]Recipe{
 		"/tag/to/two": {CalcHash([]byte("world"))},
 	})
 	if err != nil {
 		t.Errorf("failed to add recipes into JournalManager; %s", err.Error())
 	}
-	if jm.Dirty == nil {
+	if jc.Dirty == nil {
 		t.Errorf("failed to add recipes into JournalManager; Dirty is nil")
 	}
-	if jm.Head != nil {
+	if jc.Head != nil {
 		t.Errorf("not committed yet but Head is already not nil")
 	}
 
-	err = jm.AddEntry(NewJournalEntry(nil, map[string]Recipe{
+	err = jc.AddEntry(NewJournalEntry(nil, map[string]Recipe{
 		"/tag/to/not-chained": {CalcHash([]byte("foobar"))},
 	}))
 	if err == nil {
@@ -133,59 +133,59 @@ func Test_JournalManager(t *testing.T) {
 		t.Errorf("couses unexcepted error on adding not chained entry: %s", err.Error())
 	}
 
-	err = jm.AddEntry(NewJournalEntry(jm.Dirty.Previous, map[string]Recipe{
+	err = jc.AddEntry(NewJournalEntry(jc.Dirty.Previous, map[string]Recipe{
 		"/tag/to/three": {CalcHash([]byte("world"))},
 	}))
 	if err != nil {
 		t.Errorf("failed to add recipes into JournalManager; %s", err.Error())
 	}
-	if jm.Dirty == nil {
+	if jc.Dirty == nil {
 		t.Errorf("failed to add recipes into JournalManager; Dirty is nil")
 	}
-	if jm.Head != nil {
+	if jc.Head != nil {
 		t.Errorf("not committed yet but Head is already not nil")
 	}
 
-	if _, ok := jm.Dirty.Recipes["/tag/to/three"]; !ok {
-		t.Errorf("added entry was not found; found recipes is %v", jm.Dirty.Recipes)
+	if _, ok := jc.Dirty.Recipes["/tag/to/three"]; !ok {
+		t.Errorf("added entry was not found; found recipes is %v", jc.Dirty.Recipes)
 	}
-	if _, ok := jm.Dirty.Previous.Recipes["/tag/to/one"]; !ok {
-		t.Errorf("added entry was not found; found recipes is %v", jm.Dirty.Previous.Recipes)
-	}
-
-	if len(jm.GetCommitted(10)) != 0 {
-		t.Errorf("committed entries length is not excepted value; it was %d", len(jm.GetCommitted(10)))
-	}
-	if len(jm.GetDirty()) != 2 {
-		t.Errorf("dirty entries length is not excepted value; it was %d", len(jm.GetDirty()))
+	if _, ok := jc.Dirty.Previous.Recipes["/tag/to/one"]; !ok {
+		t.Errorf("added entry was not found; found recipes is %v", jc.Dirty.Previous.Recipes)
 	}
 
-	err = jm.Commit(Hash{})
+	if len(jc.GetCommitted(10)) != 0 {
+		t.Errorf("committed entries length is not excepted value; it was %d", len(jc.GetCommitted(10)))
+	}
+	if len(jc.GetDirty()) != 2 {
+		t.Errorf("dirty entries length is not excepted value; it was %d", len(jc.GetDirty()))
+	}
+
+	err = jc.Commit(Hash{})
 	if err == nil {
 		t.Errorf("succeed to commit with invalid hash")
 	} else if err != NoSuchJournalError {
 		t.Errorf("couses unexcepted error on commiting with invalid hash: %s", err.Error())
 	}
 
-	err = jm.Commit(jm.Dirty.Previous.ChainID)
+	err = jc.Commit(jc.Dirty.Previous.ChainID)
 	if err != nil {
 		t.Errorf("failed to commit; %s", err.Error())
 	}
-	if jm.Head != jm.Dirty.Previous {
-		t.Errorf("commit succeed but Head is not updated; got %v", jm.Head)
+	if jc.Head != jc.Dirty.Previous {
+		t.Errorf("commit succeed but Head is not updated; got %v", jc.Head)
 	}
 
-	err = jm.Commit(jm.Head.ChainID)
+	err = jc.Commit(jc.Head.ChainID)
 	if err == nil {
 		t.Errorf("succeed to commit the same journal twice")
 	} else if err != JournalAlreadyCommittedError {
 		t.Errorf("couses unexcepted error on commiting the same journal twice; %s", err.Error())
 	}
 
-	if len(jm.GetCommitted(10)) != 1 {
-		t.Errorf("committed entries length is not excepted value; it was %d", len(jm.GetCommitted(10)))
+	if len(jc.GetCommitted(10)) != 1 {
+		t.Errorf("committed entries length is not excepted value; it was %d", len(jc.GetCommitted(10)))
 	}
-	if len(jm.GetDirty()) != 1 {
-		t.Errorf("dirty entries length is not excepted value; it was %d", len(jm.GetDirty()))
+	if len(jc.GetDirty()) != 1 {
+		t.Errorf("dirty entries length is not excepted value; it was %d", len(jc.GetDirty()))
 	}
 }

@@ -39,6 +39,8 @@ type TransmitPlugin interface {
 
 	SendAlive(Term)
 	PollRequest(Term) bool
+	AddJournalEntry(*JournalEntry) bool
+	CommitJournal(Hash) bool
 }
 
 type ReceivePlugin interface {
@@ -53,7 +55,7 @@ type CookFS struct {
 	Receive  ReceivePlugin
 
 	Polling *Polling
-	Journal *JournalManager
+	Journal *Journal
 }
 
 func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin, transmit TransmitPlugin, receive ReceivePlugin) *CookFS {
@@ -64,7 +66,7 @@ func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin,
 		Transmit: transmit,
 		Receive:  receive,
 		Polling:  NewPolling(discover, transmit),
-		Journal:  &JournalManager{},
+		Journal:  NewJournal(),
 	}
 
 	for _, p := range c.plugins() {
@@ -75,15 +77,11 @@ func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin,
 }
 
 func (c CookFS) plugins() []Plugin {
-	return []Plugin{c.Recipe, c.Chunk, c.Discover, c.Transmit, c.Receive}
-}
-
-func (c CookFS) runnables() []Runnable {
-	return []Runnable{c.Recipe, c.Chunk, c.Discover, c.Transmit, c.Receive, c.Polling}
+	return []Plugin{c.Recipe, c.Chunk, c.Discover, c.Transmit, c.Receive, c.Journal, c.Polling}
 }
 
 func (c CookFS) Run(stop chan struct{}) error {
-	for _, x := range c.runnables() {
+	for _, x := range c.plugins() {
 		if err := x.Run(stop); err != nil {
 			return err
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 var (
@@ -103,12 +104,19 @@ func (j *JournalEntry) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-type JournalManager struct {
+type JournalChain struct {
+	sync.Mutex
+
 	Head  *JournalEntry
 	Dirty *JournalEntry
+
+	transmit TransmitPlugin
 }
 
-func (j *JournalManager) AddEntry(entry *JournalEntry) error {
+func (j *JournalChain) AddEntry(entry *JournalEntry) error {
+	j.Lock()
+	defer j.Unlock()
+
 	if j.Dirty == nil {
 		if err := j.Dirty.Join(entry); err != nil {
 			return err
@@ -136,7 +144,7 @@ func (j *JournalManager) AddEntry(entry *JournalEntry) error {
 	return JournalIsNotChainedError
 }
 
-func (j *JournalManager) AddRecipes(recipes map[string]Recipe) error {
+func (j *JournalChain) AddRecipes(recipes map[string]Recipe) error {
 	if recipes == nil || len(recipes) == 0 {
 		return fmt.Errorf("can't add empty recipes")
 	}
@@ -144,7 +152,28 @@ func (j *JournalManager) AddRecipes(recipes map[string]Recipe) error {
 	return j.AddEntry(NewJournalEntry(j.Dirty, recipes))
 }
 
-func (j *JournalManager) Commit(chainID Hash) error {
+func (j *JournalChain) Drop(chainID Hash) error {
+	j.Lock()
+	defer j.Unlock()
+
+	x := j.Dirty
+
+	for x != j.Head {
+		if x.ChainID == chainID {
+			j.Dirty = x.Previous
+			return nil
+		}
+
+		x = x.Previous
+	}
+
+	return NoSuchJournalError
+}
+
+func (j *JournalChain) Commit(chainID Hash) error {
+	j.Lock()
+	defer j.Unlock()
+
 	x := j.Dirty
 
 	for x != j.Head {
@@ -167,12 +196,12 @@ func (j *JournalManager) Commit(chainID Hash) error {
 	return NoSuchJournalError
 }
 
-func (j *JournalManager) GetDirty() []*JournalEntry {
+func (j *JournalChain) GetDirty() []*JournalEntry {
 	result := []*JournalEntry{}
 
 	x := j.Dirty
 	for x != j.Head {
-		result = append(result, x)
+		result = append([]*JournalEntry{x}, result...)
 
 		x = x.Previous
 	}
@@ -180,15 +209,96 @@ func (j *JournalManager) GetDirty() []*JournalEntry {
 	return result
 }
 
-func (j *JournalManager) GetCommitted(num int) []*JournalEntry {
-	result := make([]*JournalEntry, 0, num)
+func (j *JournalChain) GetCommitted(num int) []*JournalEntry {
+	result := []*JournalEntry{}
 
 	x := j.Head
 	for i := 0; i < num && x != nil; i++ {
-		result = append(result, x)
+		result = append([]*JournalEntry{x}, result...)
 
 		x = x.Previous
 	}
 
 	return result
+}
+
+type Journal struct {
+	chain *JournalChain
+
+	polling  *Polling
+	recipe   RecipePlugin
+	transmit TransmitPlugin
+}
+
+func NewJournal() *Journal {
+	return &Journal{
+		chain: &JournalChain{},
+	}
+}
+
+func (j *Journal) Run(chan struct{}) error {
+	return nil
+}
+
+func (j *Journal) Bind(c *CookFS) {
+	j.polling = c.Polling
+	j.recipe = c.Recipe
+	j.transmit = c.Transmit
+}
+
+type JournalLog struct {
+	Committed []*JournalEntry `json:"committed"`
+	Dirty     []*JournalEntry `json:"dirty"`
+}
+
+func (j *Journal) GetLog() JournalLog {
+	return JournalLog{
+		Committed: j.chain.GetCommitted(20),
+		Dirty:     j.chain.GetDirty(),
+	}
+}
+
+func (j *Journal) AddEntry(entry *JournalEntry) error {
+	return j.chain.AddEntry(entry)
+}
+
+func (j *Journal) Commit(chainID Hash) error {
+	old_head := j.chain.Head
+
+	if err := j.chain.Commit(chainID); err != nil {
+		return err
+	}
+
+	var entries []*JournalEntry
+	for x := j.chain.Head; x != old_head; x = x.Previous {
+		entries = append([]*JournalEntry{x}, entries...)
+	}
+
+	for _, x := range entries {
+		for tag, recipe := range x.Recipes {
+			if err := j.recipe.Save(tag, recipe); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (j *Journal) AddRecipe(tag string, recipe Recipe) error {
+	if !j.polling.IsLeader() {
+		return fmt.Errorf("I'm not the leader")
+	}
+
+	entry := NewJournalEntry(j.chain.Dirty, map[string]Recipe{tag: recipe})
+
+	if !j.transmit.AddJournalEntry(entry) {
+		return fmt.Errorf("denied")
+	}
+
+	if !j.transmit.CommitJournal(entry.ChainID) {
+		return fmt.Errorf("denied")
+	}
+
+	return nil
 }

@@ -44,7 +44,7 @@ func (ht *HTTPTransmitPlugin) SendAlive(term Term) {
 	wg.Wait()
 }
 
-func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
+func (ht *HTTPTransmitPlugin) polling(endpoint string, data interface{}) bool {
 	nodes := ht.discover.Nodes()
 
 	response := make(chan bool)
@@ -52,7 +52,7 @@ func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
 
 	for _, n := range nodes {
 		go func(node *Node) {
-			resp, err := node.Post("/leader/poll", term)
+			resp, err := node.Post(endpoint, data)
 			defer func() {
 				recover()
 			}()
@@ -74,6 +74,18 @@ func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
 	return false
 }
 
+func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
+	return ht.polling("/leader/poll", term)
+}
+
+func (ht *HTTPTransmitPlugin) AddJournalEntry(entry *JournalEntry) bool {
+	return ht.polling("/journal", entry)
+}
+
+func (ht *HTTPTransmitPlugin) CommitJournal(id Hash) bool {
+	return ht.polling("/journal/commit", id)
+}
+
 func (ht *HTTPTransmitPlugin) Run(stop chan struct{}) error {
 	return nil
 }
@@ -81,7 +93,8 @@ func (ht *HTTPTransmitPlugin) Run(stop chan struct{}) error {
 type HTTPReceivePlugin struct {
 	self    *Node
 	polling *Polling
-	journal *JournalManager
+	journal *Journal
+	recipe  RecipePlugin
 
 	mux *mux.Router
 }
@@ -95,6 +108,10 @@ func NewHTTPReceivePlugin() *HTTPReceivePlugin {
 	hr.mux.HandleFunc("/journal", hr.serveJournalList).Methods("GET")
 	hr.mux.HandleFunc("/journal", hr.serveJournalAdd).Methods("POST")
 	hr.mux.HandleFunc("/journal/commit", hr.serveJournalCommit).Methods("POST")
+	hr.mux.HandleFunc("/recipe/{tag:.+}", hr.serveRecipePut).Methods("PUT")
+	hr.mux.HandleFunc("/recipe/{tag:.+}", hr.serveRecipeGet).Methods("GET")
+	hr.mux.HandleFunc("/recipe/", hr.serveRecipeList).Methods("GET")
+	hr.mux.HandleFunc("/recipe/{prefix:.+}/", hr.serveRecipeList).Methods("GET")
 
 	return hr
 }
@@ -103,6 +120,7 @@ func (hr *HTTPReceivePlugin) Bind(cook *CookFS) {
 	hr.self = cook.Discover.Self()
 	hr.polling = cook.Polling
 	hr.journal = cook.Journal
+	hr.recipe = cook.Recipe
 }
 
 func (hr *HTTPReceivePlugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -167,15 +185,7 @@ func (hr *HTTPReceivePlugin) isLeader(r *http.Request) bool {
 }
 
 func (hr *HTTPReceivePlugin) serveJournalList(w http.ResponseWriter, r *http.Request) {
-	list := struct {
-		Committed []*JournalEntry `json:"committed"`
-		Dirty     []*JournalEntry `json:"dirty"`
-	}{
-		Committed: hr.journal.GetCommitted(20),
-		Dirty:     hr.journal.GetDirty(),
-	}
-
-	x, err := json.Marshal(list)
+	x, err := json.Marshal(hr.journal.GetLog())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -222,6 +232,63 @@ func (hr *HTTPReceivePlugin) serveJournalCommit(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (hr *HTTPReceivePlugin) serveRecipePut(w http.ResponseWriter, r *http.Request) {
+	tag := "/" + mux.Vars(r)["tag"]
+
+	if !hr.polling.IsLeader() {
+		http.Redirect(w, r, hr.polling.CurrentTerm().Leader.Join("/recipe" + tag).String(), http.StatusSeeOther)
+		return
+	}
+
+	var recipe Recipe
+	if err := json.NewDecoder(r.Body).Decode(&recipe); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := hr.journal.AddRecipe(tag, recipe); err != nil {
+		fmt.Printf("%s: failed to add new recipe: %s: %s\n", hr.self, tag, err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+	} else {
+		fmt.Printf("%s: committed new recipe: %s\n", hr.self, tag)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (hr *HTTPReceivePlugin) serveRecipeGet(w http.ResponseWriter, r *http.Request) {
+	tag := "/" + mux.Vars(r)["tag"]
+
+	recipe, err := hr.recipe.Load(tag)
+	if err == RecipeNotFound {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(recipe)
+}
+
+func (hr *HTTPReceivePlugin) serveRecipeList(w http.ResponseWriter, r *http.Request) {
+	prefix := mux.Vars(r)["prefix"]
+	if prefix != "" {
+		prefix = "/" + prefix + "/"
+	}
+
+	recipes, err := hr.recipe.Find(prefix)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if recipes == nil {
+		w.Write([]byte("[]"))
+	} else {
+		json.NewEncoder(w).Encode(recipes)
+	}
 }
 
 func (hr *HTTPReceivePlugin) Run(stop chan struct{}) error {

@@ -138,6 +138,13 @@ func (p *Polling) Loop(stop chan struct{}) {
 	}
 }
 
+func (p *Polling) IsLeader() bool {
+	return p.isLeader
+}
+
+func (p *Polling) Bind(c *CookFS) {
+}
+
 func (p *Polling) Run(stop chan struct{}) error {
 	go p.Loop(stop)
 

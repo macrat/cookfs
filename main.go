@@ -12,8 +12,8 @@ func main() {
 		nodes = append(nodes, ForceParseNode(u))
 	}
 
-	recipe := new(InMemoryRecipeStore)
-	chunk := new(InMemoryChunkStore)
+	recipe := NewInMemoryRecipeStore()
+	chunk := NewInMemoryChunkStore()
 	discover := SimpleDiscoverPlugin{self, nodes}
 	transmit := &HTTPTransmitPlugin{}
 	receive := NewHTTPReceivePlugin()
