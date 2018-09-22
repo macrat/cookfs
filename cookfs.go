@@ -53,6 +53,7 @@ type CookFS struct {
 	Receive  ReceivePlugin
 
 	Polling *Polling
+	Journal *JournalManager
 }
 
 func NewCookFS(recepie RecipiePlugin, chunk ChunkPlugin, discover DiscoverPlugin, transmit TransmitPlugin, receive ReceivePlugin) *CookFS {
@@ -63,6 +64,7 @@ func NewCookFS(recepie RecipiePlugin, chunk ChunkPlugin, discover DiscoverPlugin
 		Transmit: transmit,
 		Receive:  receive,
 		Polling:  NewPolling(discover, transmit),
+		Journal:  &JournalManager{},
 	}
 
 	for _, p := range c.plugins() {

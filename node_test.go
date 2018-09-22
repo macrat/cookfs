@@ -18,12 +18,21 @@ func Test_Node_String(t *testing.T) {
 	}
 }
 
-func Test_Node_Port(t *testing.T) {
+func Test_Node_Hostname(t *testing.T) {
 	if node_a.Port() != 80 {
 		t.Errorf("port must be 80 but got %d", node_a.Port())
 	}
 	if node_b.Port() != 8080 {
 		t.Errorf("port must be 8080 but got %d", node_b.Port())
+	}
+}
+
+func Test_Node_Port(t *testing.T) {
+	if node_a.Hostname() != "example.com" {
+		t.Errorf("port must be example.com but got %s", node_a.Hostname())
+	}
+	if node_b.Hostname() != "localhost" {
+		t.Errorf("port must be localhost but got %s", node_b.Hostname())
 	}
 }
 

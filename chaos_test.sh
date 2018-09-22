@@ -12,8 +12,8 @@ function generate() {
 	  HOSTS=`for x in $(echo ${IDS} | sed -e "s/${ID}//"); do printf "http://cookfs_${x} "; done`
 
 	  echo "  cookfs_${ID}:"
-	  echo "    image: golang:alpine"
-	  echo "    volumes: ['./cookfs:/cookfs']"
+	  echo "    image: golang"
+	  echo "    volumes: ['./cookfs:/cookfs:ro']"
 	  echo "    ports: ['$((${BASE_PORT} + ${ID} - 1)):80']"
 	  echo "    command: /cookfs http://cookfs_${ID}:80 ${HOSTS}"
 	  echo
@@ -21,7 +21,7 @@ function generate() {
 }
 
 function start_all() {
-	docker run --rm -v `pwd`:/go golang:alpine ash -c 'go build && mv go cookfs && chown 1000:1000 cookfs'
+	docker run --rm -v `pwd`:/usr/src/cookfs -w /usr/src/cookfs golang bash -c 'go get -d && go build && chown 1000:1000 cookfs'
 	generate > docker-compose.yml
 	docker-compose up -d
 }
@@ -35,7 +35,7 @@ function stop_all() {
 function info() {
 	for ID in ${IDS}; do
 		printf "${ID}: "
-		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID} - 1))/
+		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID} - 1))/leader
 		echo
 	done
 }
@@ -45,7 +45,7 @@ function stop_random() {
 }
 
 function stop_leader() {
-	docker-compose stop cookfs_`curl -s http://localhost:${BASE_PORT}/ | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
+	docker-compose stop cookfs_`curl -s http://localhost:${BASE_PORT}/leader | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
 }
 
 function restart_random() {
@@ -53,7 +53,7 @@ function restart_random() {
 }
 
 function restart_leader() {
-	docker-compose restart cookfs_`curl -s http://localhost:${BASE_PORT}/ | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
+	docker-compose restart cookfs_`curl -s http://localhost:${BASE_PORT}/leader | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
 }
 
 function show_help() {

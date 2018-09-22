@@ -16,7 +16,7 @@ func main() {
 	chunk := new(InMemoryChunkStore)
 	discover := SimpleDiscoverPlugin{self, nodes}
 	transmit := &HTTPTransmitPlugin{}
-	receive := &HTTPReceivePlugin{}
+	receive := NewHTTPReceivePlugin()
 
 	cookfs := NewCookFS(recipie, chunk, discover, transmit, receive)
 

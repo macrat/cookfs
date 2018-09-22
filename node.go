@@ -33,8 +33,16 @@ func (n *Node) String() string {
 	return (*url.URL)(n).String()
 }
 
+func (n *Node) Hostname() string {
+	h, _, err := net.SplitHostPort(n.Host)
+	if err != nil {
+		return n.Host
+	}
+	return h
+}
+
 func (n *Node) Port() int {
-	_, p, err := net.SplitHostPort((*url.URL)(n).Host)
+	_, p, err := net.SplitHostPort(n.Host)
 	if err != nil {
 		return 80
 	}

@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
+
+	"github.com/gorilla/mux"
 )
 
 type HTTPTransmitPlugin struct {
@@ -29,7 +32,7 @@ func (ht *HTTPTransmitPlugin) SendAlive(term Term) {
 		go func(node *Node) {
 			defer wg.Done()
 
-			resp, err := node.Post("/alive", term)
+			resp, err := node.Post("/leader/alive", term)
 			if err != nil {
 				fmt.Printf("%s: failed to send alive to %s\n", term.Leader, node)
 			} else if resp.StatusCode != http.StatusNoContent {
@@ -49,7 +52,7 @@ func (ht *HTTPTransmitPlugin) PollRequest(term Term) bool {
 
 	for _, n := range nodes {
 		go func(node *Node) {
-			resp, err := node.Post("/poll", term)
+			resp, err := node.Post("/leader/poll", term)
 			defer func() {
 				recover()
 			}()
@@ -78,11 +81,32 @@ func (ht *HTTPTransmitPlugin) Run(stop chan struct{}) error {
 type HTTPReceivePlugin struct {
 	self    *Node
 	polling *Polling
+	journal *JournalManager
+
+	mux *mux.Router
+}
+
+func NewHTTPReceivePlugin() *HTTPReceivePlugin {
+	hr := &HTTPReceivePlugin{mux: mux.NewRouter()}
+
+	hr.mux.HandleFunc("/leader", hr.serveLeader).Methods("GET")
+	hr.mux.HandleFunc("/leader/alive", hr.serveAlive).Methods("POST")
+	hr.mux.HandleFunc("/leader/poll", hr.servePoll).Methods("POST")
+	hr.mux.HandleFunc("/journal", hr.serveJournalList).Methods("GET")
+	hr.mux.HandleFunc("/journal", hr.serveJournalAdd).Methods("POST")
+	hr.mux.HandleFunc("/journal/commit", hr.serveJournalCommit).Methods("POST")
+
+	return hr
 }
 
 func (hr *HTTPReceivePlugin) Bind(cook *CookFS) {
 	hr.self = cook.Discover.Self()
 	hr.polling = cook.Polling
+	hr.journal = cook.Journal
+}
+
+func (hr *HTTPReceivePlugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	hr.mux.ServeHTTP(w, r)
 }
 
 func (hr *HTTPReceivePlugin) serveAlive(w http.ResponseWriter, r *http.Request) {
@@ -113,32 +137,91 @@ func (hr *HTTPReceivePlugin) servePoll(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (hr *HTTPReceivePlugin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" && r.URL.Path == "/" {
-		x, err := json.Marshal(hr.polling.CurrentTerm())
-		if err != nil {
-			fmt.Fprintln(w, err.Error())
-		} else {
-			w.Write(x)
+func (hr *HTTPReceivePlugin) serveLeader(w http.ResponseWriter, r *http.Request) {
+	x, err := json.Marshal(hr.polling.CurrentTerm())
+	if err != nil {
+		fmt.Fprintln(w, err.Error())
+	} else {
+		w.Write(x)
+	}
+}
+
+func (hr *HTTPReceivePlugin) isLeader(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+
+	ips, err := net.LookupHost(hr.polling.CurrentTerm().Leader.Hostname())
+	if err != nil {
+		return false
+	}
+
+	for _, ip := range ips {
+		if host == ip {
+			return true
 		}
+	}
+
+	return false
+}
+
+func (hr *HTTPReceivePlugin) serveJournalList(w http.ResponseWriter, r *http.Request) {
+	list := struct {
+		Committed []*JournalEntry `json:"committed"`
+		Dirty     []*JournalEntry `json:"dirty"`
+	}{
+		Committed: hr.journal.GetCommitted(20),
+		Dirty: hr.journal.GetDirty(),
+	}
+
+	x, err := json.Marshal(list)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	} else {
+		w.Write(x)
+	}
+}
+
+func (hr *HTTPReceivePlugin) serveJournalAdd(w http.ResponseWriter, r *http.Request) {
+	if !hr.isLeader(r) {
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	entry := &JournalEntry{}
+	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	switch r.URL.Path {
-	case "/alive":
-		hr.serveAlive(w, r)
+	if err := hr.journal.AddEntry(entry); err != nil {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 
-	case "/poll":
-		hr.servePoll(w, r)
+	w.WriteHeader(http.StatusNoContent)
+}
 
-	default:
+func (hr *HTTPReceivePlugin) serveJournalCommit(w http.ResponseWriter, r *http.Request) {
+	if !hr.isLeader(r) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	var id Hash
+	if err := json.NewDecoder(r.Body).Decode(&id); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := hr.journal.Commit(id); err != nil {
 		w.WriteHeader(http.StatusNotFound)
+		return
 	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (hr *HTTPReceivePlugin) Run(stop chan struct{}) error {

@@ -168,7 +168,7 @@ func (j *JournalManager) Commit(chainID Hash) error {
 }
 
 func (j *JournalManager) GetDirty() []*JournalEntry {
-	var result []*JournalEntry
+	result := []*JournalEntry{}
 
 	x := j.Dirty
 	for x != j.Head {
