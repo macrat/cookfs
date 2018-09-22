@@ -22,7 +22,7 @@ function generate() {
 }
 
 function start_all() {
-	docker run --rm -v `pwd`:/usr/src/cookfs -w /usr/src/cookfs golang bash -c 'go get -d && go build -o cookfs_server && chown 1000:1000 cookfs_server'
+	docker run --rm -v `pwd`:/go/src/github.com/macrat/cookfs -w /go/src/github.com/macrat/cookfs golang bash -c 'make && chown 1000:1000 cookfs_server'
 	generate > docker-compose.yml
 	docker-compose up -d
 }
