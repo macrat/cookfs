@@ -46,7 +46,7 @@ function stop_random() {
 }
 
 function stop_leader() {
-	docker-compose stop cookfs_`curl -s http://localhost:${BASE_PORT}/leader | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
+	docker-compose stop cookfs_`curl -s http://localhost:$((${BASE_PORT} + 1))/leader | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
 }
 
 function restart_random() {
@@ -54,7 +54,7 @@ function restart_random() {
 }
 
 function restart_leader() {
-	docker-compose restart cookfs_`curl -s http://localhost:${BASE_PORT}/leader | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
+	docker-compose restart cookfs_`curl -s http://localhost:$((${BASE_PORT} + 1))/leader | jq -r .leader | sed -e 's/http:\/\/cookfs_//' -e 's/:80//'`
 }
 
 function show_help() {
