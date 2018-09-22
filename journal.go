@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	RecipiesIsEmptyError = fmt.Errorf("can't add empty recipies")
+	RecipiesIsEmptyError         = fmt.Errorf("can't add empty recipies")
 	JournalAlreadyCommittedError = fmt.Errorf("journal entry was already committed")
-	NoSuchJournalError = fmt.Errorf("no such journal entry entry")
-	JournalIsNotChainedError = fmt.Errorf("jurnal entry is not chained")
+	NoSuchJournalError           = fmt.Errorf("no such journal entry entry")
+	JournalIsNotChainedError     = fmt.Errorf("jurnal entry is not chained")
 )
 
 type JournalEntry struct {
@@ -72,9 +72,9 @@ type jsonJournalEntry struct {
 }
 
 func (j *JournalEntry) MarshalJSON() ([]byte, error) {
-	x := jsonJournalEntry {
-		EntryID: j.EntryID,
-		ChainID: j.ChainID,
+	x := jsonJournalEntry{
+		EntryID:  j.EntryID,
+		ChainID:  j.ChainID,
 		Recipies: j.Recipies,
 	}
 
