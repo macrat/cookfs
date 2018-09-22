@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"net"
-	"net/http"
 	"net/url"
 	"path"
 	"strconv"
-	"time"
 )
 
 type Node url.URL
@@ -80,16 +77,4 @@ func (n *Node) Join(subpath string) *Node {
 	u := *n
 	u.Path = path.Join(u.Path, subpath)
 	return &u
-}
-
-func (n *Node) Get(endpoint string) (*http.Response, error) {
-	return (&http.Client{Timeout: 200 * time.Millisecond}).Get(n.Join(endpoint).String())
-}
-
-func (n *Node) Post(endpoint string, data interface{}) (*http.Response, error) {
-	x, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-	return (&http.Client{Timeout: 200 * time.Millisecond}).Post(n.Join(endpoint).String(), "application/json", bytes.NewReader(x))
 }

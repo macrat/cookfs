@@ -1,14 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 )
+
+func post(n *Node, endpoint string, timeout time.Duration, data interface{}) (*http.Response, error) {
+	x, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return (&http.Client{Timeout: timeout}).Post(n.Join(endpoint).String(), "application/json", bytes.NewReader(x))
+}
 
 type HTTPTransmitPlugin struct {
 	discover DiscoverPlugin
@@ -19,8 +28,6 @@ func (ht *HTTPTransmitPlugin) Bind(cook *CookFS) {
 }
 
 func (ht *HTTPTransmitPlugin) SendAlive(term Term) {
-	wg := &sync.WaitGroup{}
-
 	nodes := ht.discover.Nodes()
 
 	for _, n := range nodes {
@@ -28,20 +35,15 @@ func (ht *HTTPTransmitPlugin) SendAlive(term Term) {
 			continue
 		}
 
-		wg.Add(1)
 		go func(node *Node) {
-			defer wg.Done()
-
-			resp, err := node.Post("/leader/alive", term)
+			resp, err := post(node, "/leader/alive", 500*time.Millisecond, term)
 			if err != nil {
-				fmt.Printf("%s: failed to send alive to %s\n", term.Leader, node)
+				fmt.Printf("%s: failed to send alive to %s: %s\n", term.Leader, node, err.Error())
 			} else if resp.StatusCode != http.StatusNoContent {
 				fmt.Printf("%s: denied alive by %s: %s\n", term.Leader, node, resp.Status)
 			}
 		}(n)
 	}
-
-	wg.Wait()
 }
 
 func (ht *HTTPTransmitPlugin) polling(endpoint string, data interface{}) bool {
@@ -52,7 +54,7 @@ func (ht *HTTPTransmitPlugin) polling(endpoint string, data interface{}) bool {
 
 	for _, n := range nodes {
 		go func(node *Node) {
-			resp, err := node.Post(endpoint, data)
+			resp, err := post(node, endpoint, 200*time.Millisecond, data)
 			defer func() {
 				recover()
 			}()
