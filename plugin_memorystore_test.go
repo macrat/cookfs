@@ -31,30 +31,31 @@ func Test_InMemoryChunkStore(t *testing.T) {
 func Test_InMemoryRecipieStore(t *testing.T) {
 	m := cookfs.NewInMemoryRecipieStore()
 
-	a := []cookfs.Hash{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world"))}
-	b := []cookfs.Hash{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world")), cookfs.CalcHash([]byte("foobar"))}
-	recipies := []cookfs.Recipie{
-		cookfs.Recipie{"/tag/of/foobar", a},
-		cookfs.Recipie{"/tag/to/hogefuga", b},
+	a := cookfs.Recipie{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world"))}
+	b := cookfs.Recipie{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world")), cookfs.CalcHash([]byte("foobar"))}
+	recipies := []struct{
+		tag     string
+		recipie cookfs.Recipie
+	} {
+		{"/tag/of/foobar", a},
+		{"/tag/to/hogefuga", b},
 	}
 
-	for _, recipie := range recipies {
-		if err := m.Save(recipie); err != nil {
+	for _, x := range recipies {
+		if err := m.Save(x.tag, x.recipie); err != nil {
 			t.Errorf("failed to save recipie because; %s", err.Error())
 		}
 	}
 
-	for _, recipie := range recipies {
-		if got, err := m.Load(recipie.Tag); err != nil {
+	for _, x := range recipies {
+		if got, err := m.Load(x.tag); err != nil {
 			t.Errorf("failed to load recipie because; %s", err.Error())
-		} else if got.Tag != recipie.Tag {
-			t.Errorf("failed to load recipie; excepted tag is %#v but got %#v", recipie.Tag, got.Tag)
-		} else if len(got.Data) != len(recipie.Data) {
-			t.Errorf("failed to load recipie; excepted data is %#v but got %#v", recipie.Data, got.Data)
+		} else if len(got) != len(x.recipie) {
+			t.Errorf("failed to load recipie; excepted data is %#v but got %#v", x.recipie, got)
 		} else {
-			for i, x := range got.Data {
-				if x != recipie.Data[i] {
-					t.Errorf("failed to load recipie; excepted data is %#v but got %#v", recipie.Data, got.Data)
+			for i, y := range got {
+				if y != x.recipie[i] {
+					t.Errorf("failed to load recipie; excepted data is %#v but got %#v", x.recipie, got)
 				}
 			}
 		}
@@ -71,7 +72,7 @@ func Test_InMemoryRecipieStore(t *testing.T) {
 		if founds, err := m.Find(test.prefix); err != nil {
 			t.Errorf("failed to find tag because; %s", err.Error())
 		} else if len(founds) != len(test.except) {
-			t.Errorf("InMemoryRecipieStore.Find was returns unexcepted result; %#v", founds)
+			t.Errorf("InMemoryRecipieStore.Find(%#v) was returns unexcepted result; %#v", test.prefix, founds)
 		} else {
 			for _, x := range test.except {
 				ok := false
@@ -82,7 +83,7 @@ func Test_InMemoryRecipieStore(t *testing.T) {
 					}
 				}
 				if !ok {
-					t.Errorf("InMemoryRecipieStore.Find was returns unexcepted result; %#v", founds)
+					t.Errorf("InMemoryRecipieStore.Find(%#v) was returns unexcepted result; %#v", test.prefix, founds)
 					break
 				}
 			}

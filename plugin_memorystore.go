@@ -57,11 +57,11 @@ func (m *InMemoryChunkStore) Delete(h Hash) error {
 type InMemoryRecipieStore struct {
 	sync.Mutex
 
-	data map[string][]Hash
+	data map[string]Recipie
 }
 
 func NewInMemoryRecipieStore() *InMemoryRecipieStore {
-	return &InMemoryRecipieStore{data: make(map[string][]Hash)}
+	return &InMemoryRecipieStore{data: make(map[string]Recipie)}
 }
 
 func (m *InMemoryRecipieStore) Bind(c *CookFS) {
@@ -71,16 +71,16 @@ func (m *InMemoryRecipieStore) Run(chan struct{}) error {
 	return nil
 }
 
-func (m *InMemoryRecipieStore) Save(recipie Recipie) error {
+func (m *InMemoryRecipieStore) Save(tag string, recipie Recipie) error {
 	m.Lock()
-	m.data[recipie.Tag] = recipie.Data
+	m.data[tag] = recipie
 	m.Unlock()
 	return nil
 }
 
 func (m *InMemoryRecipieStore) Load(tag string) (Recipie, error) {
 	if data, ok := m.data[tag]; ok {
-		return Recipie{tag, data}, nil
+		return data, nil
 	} else {
 		return Recipie{}, RecipieNotFound
 	}

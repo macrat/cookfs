@@ -7,8 +7,8 @@ import (
 
 func Test_calcEntryID(t *testing.T) {
 	recipies := map[string]Recipie{
-		"/foo": Recipie{"/foo", []Hash{CalcHash([]byte("hello"))}},
-		"/bar": Recipie{"/bar", []Hash{CalcHash([]byte("world"))}},
+		"/foo": Recipie{CalcHash([]byte("hello"))},
+		"/bar": Recipie{CalcHash([]byte("world"))},
 	}
 
 	except := CalcHash([]byte(
