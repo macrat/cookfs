@@ -4,9 +4,6 @@ import (
 	"os"
 
 	"github.com/macrat/cookfs/cookfs"
-
-	"net/http"
-	_ "net/http/pprof"
 )
 
 func main() {
@@ -24,10 +21,6 @@ func main() {
 	receive := cookfs.NewHTTPReceivePlugin()
 
 	c := cookfs.NewCookFS(recipe, chunk, discover, transmit, receive)
-
-	go func() {
-		http.ListenAndServe(":3000", nil)
-	}()
 
 	stop := make(chan struct{})
 	c.Run(stop)

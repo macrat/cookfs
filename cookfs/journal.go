@@ -260,6 +260,7 @@ type Journal struct {
 	polling  *Polling
 	recipe   RecipePlugin
 	transmit TransmitPlugin
+	metrics  Metrics
 }
 
 func NewJournal() *Journal {
@@ -276,6 +277,7 @@ func (j *Journal) Bind(c *CookFS) {
 	j.polling = c.Polling
 	j.recipe = c.Recipe
 	j.transmit = c.Transmit
+	j.metrics = c.Metrics
 }
 
 type JournalLog struct {
@@ -291,7 +293,12 @@ func (j *Journal) GetLog() JournalLog {
 }
 
 func (j *Journal) AddEntry(entry *JournalEntry) error {
-	return j.chain.AddEntry(entry)
+	if err := j.chain.AddEntry(entry); err != nil {
+		return err
+	}
+
+	j.metrics.JournalAdded()
+	return nil
 }
 
 func (j *Journal) Commit(chainID Hash) error {
@@ -313,6 +320,8 @@ func (j *Journal) Commit(chainID Hash) error {
 			}
 		}
 	}
+
+	j.metrics.JournalCommitted()
 
 	return nil
 }

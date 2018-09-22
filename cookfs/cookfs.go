@@ -56,6 +56,7 @@ type CookFS struct {
 
 	Polling *Polling
 	Journal *Journal
+	Metrics Metrics
 }
 
 func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin, transmit TransmitPlugin, receive ReceivePlugin) *CookFS {
@@ -67,6 +68,7 @@ func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin,
 		Receive:  receive,
 		Polling:  NewPolling(),
 		Journal:  NewJournal(),
+		Metrics:  NewMetrics(),
 	}
 
 	for _, p := range c.plugins() {
@@ -77,7 +79,7 @@ func NewCookFS(recepie RecipePlugin, chunk ChunkPlugin, discover DiscoverPlugin,
 }
 
 func (c CookFS) plugins() []Plugin {
-	return []Plugin{c.Recipe, c.Chunk, c.Discover, c.Transmit, c.Receive, c.Journal, c.Polling}
+	return []Plugin{c.Recipe, c.Chunk, c.Discover, c.Transmit, c.Receive, c.Journal, c.Polling, c.Metrics}
 }
 
 func (c CookFS) Run(stop chan struct{}) error {

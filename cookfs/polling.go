@@ -13,6 +13,7 @@ type Polling struct {
 	Discover DiscoverPlugin
 	Transmit TransmitPlugin
 	Journal  *Journal
+	Metrics  Metrics
 
 	PollingInterval   time.Duration
 	SendAliveInterval time.Duration
@@ -58,6 +59,7 @@ func (p *Polling) StartPoll() {
 
 		p.currentTerm = newTerm.Term
 		p.isLeader = true
+		p.Metrics.BecameLeader()
 	} else {
 		fmt.Printf("%s: failed to promotion to leader of %d\n", p.Discover.Self(), newTerm.ID)
 	}
@@ -71,6 +73,7 @@ func (p *Polling) AliveArrived(term TermStatus) (accepted bool) {
 
 	if !term.Equals(p.currentTerm) {
 		fmt.Printf("%s: term changed to %s\n", p.Discover.Self(), term)
+		p.Metrics.TermChanged(p.currentTerm, term.Term)
 	}
 
 	if term.JournalID != (Hash{}) {
@@ -95,11 +98,14 @@ func (p *Polling) CanPoll(term TermStatus) bool {
 		defer p.Unlock()
 
 		p.lastPoll = time.Now()
+		p.Metrics.DoPolling()
 
 		fmt.Printf("%s: vote to %s\n", p.Discover.Self(), term)
 
 		return true
 	} else {
+		p.Metrics.DenyPolling()
+
 		return false
 	}
 }
@@ -138,6 +144,7 @@ func (p *Polling) Loop(stop chan struct{}) {
 
 			case <-time.After(deathTimer):
 				fmt.Printf("%s: %s is dead\n", p.Discover.Self(), p.currentTerm)
+				p.Metrics.BecameCandidacy()
 				p.StartPoll()
 				if p.isLeader {
 					candidacyCount = 0
@@ -160,6 +167,7 @@ func (p *Polling) Bind(c *CookFS) {
 	p.Discover = c.Discover
 	p.Transmit = c.Transmit
 	p.Journal = c.Journal
+	p.Metrics = c.Metrics
 }
 
 func (p *Polling) Run(stop chan struct{}) error {
