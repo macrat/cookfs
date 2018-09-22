@@ -13,6 +13,9 @@ func Test_Hash(t *testing.T) {
 	if h.String() != data {
 		t.Errorf("excepted: %s but got %s", data, h.String())
 	}
+	if h.ShortHash() != data[:8] {
+		t.Errorf("excepted: %s but got %s", data, h.String())
+	}
 }
 
 func Test_CalcHash(t *testing.T) {

@@ -24,6 +24,10 @@ func ParseHash(raw string) (Hash, error) {
 	return h, nil
 }
 
+func (h Hash) ShortHash() string {
+	return hex.EncodeToString([]byte(h[:4]))
+}
+
 func (h Hash) String() string {
 	return hex.EncodeToString([]byte(h[:]))
 }
