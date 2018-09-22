@@ -5,6 +5,13 @@ import (
 	"fmt"
 )
 
+var (
+	RecipiesIsEmptyError = fmt.Errorf("can't add empty recipies")
+	JournalAlreadyCommittedError = fmt.Errorf("journal entry was already committed")
+	NoSuchJournalError = fmt.Errorf("no such journal entry entry")
+	JournalIsNotChainedError = fmt.Errorf("jurnal entry is not chained")
+)
+
 type JournalEntry struct {
 	Previous *JournalEntry
 	EntryID  Hash
@@ -40,7 +47,11 @@ func NewJournalEntry(previous *JournalEntry, recipies map[string]Recipie) *Journ
 }
 
 func (j *JournalEntry) IsPreviousOf(next *JournalEntry) bool {
-	return next.ChainID == calcChainID(j.ChainID, next.EntryID)
+	var prevID Hash
+	if j != nil {
+		prevID = j.ChainID
+	}
+	return next.ChainID == calcChainID(prevID, next.EntryID)
 }
 
 func (j *JournalEntry) Join(next *JournalEntry) error {
@@ -51,4 +62,68 @@ func (j *JournalEntry) Join(next *JournalEntry) error {
 	next.Previous = j
 
 	return nil
+}
+
+type JournalManager struct {
+	Head  *JournalEntry
+	Dirty *JournalEntry
+}
+
+func (j *JournalManager) AddEntry(entry *JournalEntry) error {
+	if j.Dirty == nil {
+		if err := j.Dirty.Join(entry); err != nil {
+			return err
+		}
+		j.Dirty = entry
+		return nil
+	}
+
+	dirty := j.Dirty
+
+	stop := j.Head
+	if stop != nil {
+		stop = stop.Previous
+	}
+
+	for dirty != stop {
+		if err := dirty.Join(entry); err == nil {
+			j.Dirty = entry
+			return nil
+		}
+
+		dirty = dirty.Previous
+	}
+
+	return JournalIsNotChainedError
+}
+
+func (j *JournalManager) AddRecipies(recipies map[string]Recipie) error {
+	if recipies == nil || len(recipies) == 0 {
+		return fmt.Errorf("can't add empty recipies")
+	}
+
+	return j.AddEntry(NewJournalEntry(j.Dirty, recipies))
+}
+
+func (j *JournalManager) Commit(chainID Hash) error {
+	x := j.Dirty
+
+	for x != j.Head {
+		if x.ChainID == chainID {
+			j.Head = x
+			return nil
+		}
+
+		x = x.Previous
+	}
+
+	for x != nil {
+		if x.ChainID == chainID {
+			return JournalAlreadyCommittedError
+		}
+
+		x = x.Previous
+	}
+
+	return NoSuchJournalError
 }
