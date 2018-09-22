@@ -1,6 +1,7 @@
 #!/bin/bash
 
 IDS=`echo {1..50}`
+PROF_PORT=3000
 BASE_PORT=8000
 
 function generate() {
@@ -14,7 +15,7 @@ function generate() {
 	  echo "  cookfs_${ID}:"
 	  echo "    image: golang"
 	  echo "    volumes: ['./cookfs:/cookfs:ro']"
-	  echo "    ports: ['$((${BASE_PORT} + ${ID} - 1)):80']"
+	  echo "    ports: ['$((${BASE_PORT} + ${ID})):80', '$((${PROF_PORT} + ${ID})):3000']"
 	  echo "    command: /cookfs http://cookfs_${ID}:80 ${HOSTS}"
 	  echo
 	done
@@ -35,7 +36,7 @@ function stop_all() {
 function info() {
 	for ID in ${IDS}; do
 		printf "${ID}: "
-		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID} - 1))/leader
+		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID}))/leader
 		echo
 	done
 }
