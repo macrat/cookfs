@@ -166,3 +166,29 @@ func (j *JournalManager) Commit(chainID Hash) error {
 
 	return NoSuchJournalError
 }
+
+func (j *JournalManager) GetDirty() []*JournalEntry {
+	var result []*JournalEntry
+
+	x := j.Dirty
+	for x != j.Head {
+		result = append(result, x)
+
+		x = x.Previous
+	}
+
+	return result
+}
+
+func (j *JournalManager) GetCommitted(num int) []*JournalEntry {
+	result := make([]*JournalEntry, 0, num)
+
+	x := j.Head
+	for i := 0; i < num && x != nil; i++ {
+		result = append(result, x)
+
+		x = x.Previous
+	}
+
+	return result
+}

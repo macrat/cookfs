@@ -153,6 +153,13 @@ func Test_JournalManager(t *testing.T) {
 		t.Errorf("added entry was not found; found recipies is %v", jm.Dirty.Previous.Recipies)
 	}
 
+	if len(jm.GetCommitted(10)) != 0 {
+		t.Errorf("committed entries length is not excepted value; it was %d", len(jm.GetCommitted(10)))
+	}
+	if len(jm.GetDirty()) != 2 {
+		t.Errorf("dirty entries length is not excepted value; it was %d", len(jm.GetDirty()))
+	}
+
 	err = jm.Commit(Hash{})
 	if err == nil {
 		t.Errorf("succeed to commit with invalid hash")
@@ -173,5 +180,12 @@ func Test_JournalManager(t *testing.T) {
 		t.Errorf("succeed to commit the same journal twice")
 	} else if err != JournalAlreadyCommittedError {
 		t.Errorf("couses unexcepted error on commiting the same journal twice; %s", err.Error())
+	}
+
+	if len(jm.GetCommitted(10)) != 1 {
+		t.Errorf("committed entries length is not excepted value; it was %d", len(jm.GetCommitted(10)))
+	}
+	if len(jm.GetDirty()) != 1 {
+		t.Errorf("dirty entries length is not excepted value; it was %d", len(jm.GetDirty()))
 	}
 }
