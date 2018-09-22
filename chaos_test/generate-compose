@@ -1,0 +1,18 @@
+#!/bin/bash
+
+. ./env
+
+echo 'version: "3"'
+echo
+echo 'services:'
+
+for ID in ${IDS}; do
+	HOSTS=`for x in $(echo ${IDS} | sed -e "s/${ID}//"); do printf "http://cookfs_${x} "; done`
+	
+	echo "  cookfs_${ID}:"
+	echo "    image: golang"
+	echo "    volumes: ['../bin/cookfs:/cookfs:ro']"
+	echo "    ports: ['$((${BASE_PORT} + ${ID})):80', '$((${PROF_PORT} + ${ID})):3000']"
+	echo "    command: /cookfs http://cookfs_${ID}:80 ${HOSTS}"
+	echo
+done

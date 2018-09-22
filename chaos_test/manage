@@ -1,0 +1,47 @@
+#!/bin/bash
+
+. ./env
+
+function info() {
+	for ID in ${IDS}; do
+		printf "${ID}: "
+		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID}))/leader
+		echo
+	done
+}
+
+function manage_random() {
+	docker-compose $1 $(echo `echo ${IDS} | grep -o '[0-9]\+' | sort -R | head -n ${2:-1} | xargs -I{} echo cookfs_{}`)
+}
+
+function leader() {
+	make bin/cookctl >/dev/null 2>&1
+
+	../bin/cookctl `for ID in ${IDS}; do printf -- "--server http://localhost:$((${BASE_PORT} + ${ID})) "; done` info --format json | jq -r .leader | sed -e 's/http:\/\///' -e 's/:80//'
+}
+
+function manage_leader() {
+	docker-compose $1 $(leader)
+}
+
+function show_help() {
+	echo "$1 COMMAND"
+	echo
+	echo 'COMMAND:'
+	echo '  start - start containers'
+	echo '  stop - stop containers'
+	echo '  leader (stop|restart) - manage leader container'
+	echo '  random (stop|restart) [number] - manage random containers'
+	echo '  info - get current term information'
+	echo '  logs - show logs'
+}
+
+case $1 in
+	start ) make && docker-compose up -d ;;
+	stop ) make docker-compose.yml && docker-compose stop ;;
+	random ) make docker-compose.yml && manage_random $2 $3 ;;
+	leader ) make docker-compose.yml && manage_leader $2 ;;
+	info ) make ../bin/cookctl && info ;;
+	logs ) make docker-compose.yml && docker-compose logs -f ;;
+	* ) show_help $0 >&2 ;;
+esac

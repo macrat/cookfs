@@ -1,0 +1,5 @@
+#!/bin/bash
+
+IDS=`echo {1..50}`
+PROF_PORT=3000
+BASE_PORT=8000
