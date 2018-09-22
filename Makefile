@@ -1,14 +1,16 @@
 .PHONY: all
-all: get cookfs_server
+all: bin/cookfs bin/cookctl
 
 .PHONY: get
 get:
 	go get -d
 
-.PHONY: cookfs_server
-cookfs_server:
+bin/cookfs: get $(shell ls *.go cookfs/*.go)
 	go build -o $@
+
+bin/cookctl: get $(shell ls cookctl/*.go cookfs/*.go)
+	cd cookctl && go build -o ../$@
 
 .PHONY: clean
 clean:
-	rm cookfs_server
+	rm -r bin
