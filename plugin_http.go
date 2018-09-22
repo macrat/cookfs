@@ -240,7 +240,7 @@ func (hr *HTTPReceivePlugin) serveRecipePut(w http.ResponseWriter, r *http.Reque
 	tag := "/" + mux.Vars(r)["tag"]
 
 	if !hr.polling.IsLeader() {
-		http.Redirect(w, r, hr.polling.CurrentTerm().Leader.Join("/recipe" + tag).String(), http.StatusSeeOther)
+		http.Redirect(w, r, hr.polling.CurrentTerm().Leader.Join("/recipe"+tag).String(), http.StatusSeeOther)
 		return
 	}
 

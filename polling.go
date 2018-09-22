@@ -13,10 +13,11 @@ type Polling struct {
 	Discover DiscoverPlugin
 	Transmit TransmitPlugin
 
-	PollingInterval     time.Duration
-	SendAliveInterval   time.Duration
-	LeaderDeathTimerMin time.Duration
-	LeaderDeathTimerMax time.Duration
+	PollingInterval   time.Duration
+	SendAliveInterval time.Duration
+	LeaderDeathTimer  time.Duration
+	CandidacyTimerMin time.Duration
+	CandidacyTimerMax time.Duration
 
 	currentTerm  Term
 	aliveArrived chan struct{}
@@ -26,13 +27,14 @@ type Polling struct {
 
 func NewPolling(discover DiscoverPlugin, transmit TransmitPlugin) *Polling {
 	return &Polling{
-		Discover:            discover,
-		Transmit:            transmit,
-		PollingInterval:     1 * time.Second,
-		SendAliveInterval:   100 * time.Millisecond,
-		LeaderDeathTimerMin: 500 * time.Millisecond,
-		LeaderDeathTimerMax: 600 * time.Millisecond,
-		aliveArrived:        make(chan struct{}),
+		Discover:          discover,
+		Transmit:          transmit,
+		PollingInterval:   500 * time.Millisecond,
+		SendAliveInterval: 100 * time.Millisecond,
+		LeaderDeathTimer:  400 * time.Millisecond,
+		CandidacyTimerMin: 100 * time.Millisecond,
+		CandidacyTimerMax: 300 * time.Millisecond,
+		aliveArrived:      make(chan struct{}),
 	}
 }
 
@@ -93,14 +95,10 @@ func (p *Polling) CanPoll(term Term) bool {
 	}
 }
 
-func (p *Polling) leaderDeathTimer() time.Duration {
-	return time.Duration(rand.Int63n(int64(p.LeaderDeathTimerMax-p.LeaderDeathTimerMin))) + p.LeaderDeathTimerMin
-}
-
 func (p *Polling) Loop(stop chan struct{}) {
 	rand.Seed(time.Now().UnixNano())
 
-	candidate_count := 1
+	candidacyCount := 1
 
 	for {
 		if p.isLeader {
@@ -117,18 +115,25 @@ func (p *Polling) Loop(stop chan struct{}) {
 				return
 			}
 		} else {
+			deathTimer := time.Duration(rand.Int63n(int64(p.CandidacyTimerMax-p.CandidacyTimerMin))) + p.CandidacyTimerMin
+			if candidacyCount == 0 {
+				deathTimer += p.LeaderDeathTimer
+			} else {
+				deathTimer *= time.Duration(candidacyCount)
+			}
+
 			select {
 			case <-p.aliveArrived:
-				candidate_count = 1
+				candidacyCount = 0
 				continue
 
-			case <-time.After(p.leaderDeathTimer() * time.Duration(candidate_count)):
+			case <-time.After(deathTimer):
 				fmt.Printf("%s: %s is dead\n", p.Discover.Self(), p.currentTerm)
 				p.StartPoll()
 				if p.isLeader {
-					candidate_count = 1
+					candidacyCount = 0
 				} else {
-					candidate_count++
+					candidacyCount++
 				}
 
 			case <-stop:
