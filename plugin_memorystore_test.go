@@ -1,15 +1,13 @@
-package main_test
+package main
 
 import (
 	"testing"
-
-	cookfs "."
 )
 
 func Test_InMemoryChunkStore(t *testing.T) {
-	m := cookfs.NewInMemoryChunkStore()
+	m := NewInMemoryChunkStore()
 
-	chunk := cookfs.NewChunk(cookfs.Hash{}, []byte("hello"))
+	chunk := NewChunk(Hash{}, []byte("hello"))
 
 	if err := m.Save(chunk); err != nil {
 		t.Errorf("failed to save chunk because; %s", err.Error())
@@ -23,19 +21,19 @@ func Test_InMemoryChunkStore(t *testing.T) {
 
 	if err := m.Delete(chunk.Hash); err != nil {
 		t.Errorf("failed to delete chunk because; %s", err.Error())
-	} else if _, err := m.Load(chunk.Hash); err != cookfs.ChunkNotFound {
+	} else if _, err := m.Load(chunk.Hash); err != ChunkNotFound {
 		t.Errorf("InMemoryChunkStore.Delete was succeed but data is not deleted")
 	}
 }
 
 func Test_InMemoryRecipieStore(t *testing.T) {
-	m := cookfs.NewInMemoryRecipieStore()
+	m := NewInMemoryRecipieStore()
 
-	a := cookfs.Recipie{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world"))}
-	b := cookfs.Recipie{cookfs.CalcHash([]byte("hello")), cookfs.CalcHash([]byte("world")), cookfs.CalcHash([]byte("foobar"))}
+	a := Recipie{CalcHash([]byte("hello")), CalcHash([]byte("world"))}
+	b := Recipie{CalcHash([]byte("hello")), CalcHash([]byte("world")), CalcHash([]byte("foobar"))}
 	recipies := []struct {
 		tag     string
-		recipie cookfs.Recipie
+		recipie Recipie
 	}{
 		{"/tag/of/foobar", a},
 		{"/tag/to/hogefuga", b},

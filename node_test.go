@@ -1,14 +1,12 @@
-package main_test
+package main
 
 import (
 	"testing"
-
-	cookfs "."
 )
 
 var (
-	node_a = cookfs.ForceParseNode("http://example.com/path/to")
-	node_b = cookfs.ForceParseNode("http://localhost:8080/foo/bar")
+	node_a = ForceParseNode("http://example.com/path/to")
+	node_b = ForceParseNode("http://localhost:8080/foo/bar")
 )
 
 func Test_Node_String(t *testing.T) {
@@ -44,7 +42,7 @@ func Test_Node_Equals(t *testing.T) {
 func Test_Node_Join(t *testing.T) {
 	joined := node_a.Join("/foo/bar")
 
-	if !joined.Equals(cookfs.ForceParseNode("http://example.com/path/to/foo/bar")) {
+	if !joined.Equals(ForceParseNode("http://example.com/path/to/foo/bar")) {
 		t.Errorf("failed to join; got %s", joined)
 	}
 }

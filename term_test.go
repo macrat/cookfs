@@ -1,15 +1,13 @@
-package main_test
+package main
 
 import (
 	"testing"
-
-	cookfs "."
 )
 
 var (
-	term_a = cookfs.Term{1, cookfs.ForceParseNode("http://localhost:8000")}
-	term_b = cookfs.Term{2, cookfs.ForceParseNode("http://localhost:8001")}
-	term_c = cookfs.Term{1, cookfs.ForceParseNode("http://localhost:8002")}
+	term_a = Term{1, ForceParseNode("http://localhost:8000")}
+	term_b = Term{2, ForceParseNode("http://localhost:8001")}
+	term_c = Term{1, ForceParseNode("http://localhost:8002")}
 )
 
 func Test_Term_String(t *testing.T) {
