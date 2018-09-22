@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha512"
 	"encoding/json"
 	"fmt"
 )
@@ -16,17 +15,11 @@ type JournalEntry struct {
 
 func calcEntryID(recipies map[string]Recipie) Hash {
 	j, _ := json.Marshal(recipies)
-	return Hash(sha512.Sum512(j))
+	return CalcHash(j)
 }
 
 func calcChainID(previousChainID, nextEntryID Hash) Hash {
-	chainID := sha512.New()
-	chainID.Write(previousChainID[:])
-	chainID.Write(nextEntryID[:])
-
-	var result Hash
-	chainID.Sum(result[:0])
-	return result
+	return CalcHash(previousChainID[:], nextEntryID[:])
 }
 
 func NewJournalEntry(previous *JournalEntry, recipies map[string]Recipie) *JournalEntry {

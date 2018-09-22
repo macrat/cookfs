@@ -11,10 +11,10 @@ func Test_Hash(t *testing.T) {
 		t.Errorf("failed to parse: %s", err.Error())
 	}
 	if h.String() != data {
-		t.Errorf("excepted: %s but got %s", data, h.String())
+		t.Errorf("excepted %s but got %s", data, h.String())
 	}
 	if h.ShortHash() != data[:8] {
-		t.Errorf("excepted: %s but got %s", data, h.String())
+		t.Errorf("excepted %s but got %s", data, h.String())
 	}
 }
 
@@ -26,5 +26,17 @@ func Test_CalcHash(t *testing.T) {
 
 	if h := CalcHash([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}); h != except {
 		t.Errorf("failed to calcurate hash: got %x", h)
+	}
+}
+
+func Test_CalcHash_MultiData(t *testing.T) {
+	hello := CalcHash([]byte("hello"))
+	world := CalcHash([]byte("world"))
+
+	except := CalcHash(append(hello[:], world[:]...))
+	got := CalcHash(hello[:], world[:])
+
+	if got != except {
+		t.Errorf("excepted %s but got %s", except, got)
 	}
 }

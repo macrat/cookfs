@@ -25,7 +25,7 @@ func Test_calcChainID(t *testing.T) {
 	hello := CalcHash([]byte("hello"))
 	world := CalcHash([]byte("world"))
 
-	except := CalcHash(append(hello[:], world[:]...))
+	except := CalcHash(hello[:], world[:])
 	got := calcChainID(hello, world)
 
 	if got != except {
