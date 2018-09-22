@@ -66,7 +66,7 @@ func Request(servers []*url.URL, method, endpoint string, data interface{}) (*ht
 	}
 }
 
-func Info(servers []*url.URL) error {
+func Info(servers []*url.URL, format string) error {
 	resp, err := Request(servers, "GET", "/leader", nil)
 	if err != nil {
 		return err
@@ -75,8 +75,13 @@ func Info(servers []*url.URL) error {
 	var status cookfs.TermStatus
 	json.NewDecoder(resp.Body).Decode(&status)
 
-	y, _ := yaml.Marshal(status)
-	fmt.Println(string(y))
+	if format == "yaml" {
+		y, _ := yaml.Marshal(status)
+		fmt.Println(string(y))
+	} else {
+		j, _ := json.Marshal(status)
+		fmt.Println(string(j))
+	}
 
 	return nil
 }
@@ -94,8 +99,10 @@ func main() {
 
 	server := kingpin.Flag("server", "Server address.").Default("http://localhost:8080").URLList()
 
-	kingpin.Command("info", "Get server information.").Action(func(c *kingpin.ParseContext) error {
-		return Info(*server)
+	infoCommand := kingpin.Command("info", "Get server information.")
+	infoFormat := infoCommand.Flag("format", "Output format. yaml or json.").Default("yaml").Enum("yaml", "json")
+	infoCommand.Action(func(c *kingpin.ParseContext) error {
+		return Info(*server, *infoFormat)
 	})
 
 	uploadCommand := kingpin.Command("upload", "Upload file.")
