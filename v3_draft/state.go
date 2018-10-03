@@ -315,23 +315,3 @@ func (c *PatchChain) New(recipes RecipeList) (Patch, error) {
 
 	return patch, nil
 }
-
-func main() {
-	s := NewState()
-	fmt.Println(s)
-
-	pc := new(PatchChain)
-	pc.New(RecipeList{
-		"/hello": []ChunkID{NewChunkID([]byte("hel")), NewChunkID([]byte("lo"))},
-		"/world": []ChunkID{NewChunkID([]byte("world"))},
-	})
-
-	p, _ := pc.New(RecipeList{
-		"/hello": nil,
-	})
-
-	fmt.Println(pc)
-	pc.ApplyTo(s, p.ID)
-
-	fmt.Println(s)
-}

@@ -1,50 +1,17 @@
 package main
 
 import (
-	"net/url"
-	"sync"
 	"context"
 )
 
-type Request struct {
-	Path string
-	Data interface{}
-}
+func main() {
+	ctx := context.Background()
 
-type Response struct {
-	StatusCode int
-	Data       interface{}
-}
+	ch := make(chan RequestResponse)
 
-type RequestResponse struct {
-	Request  Request
-	Response chan Response
-}
+	f := Follower{}
+	go f.Run(ctx, ch)
 
-type Follower struct {
-	Leader *url.URL
-	TermID int64
-	Staet *State
-}
-
-func (f Follower) handle(request Request) Response {
-}
-
-func (f Follower) Run(ctx context.Context, ch chan RequestResponse) {
-	for {
-		switch {
-		case reqres := <-ch:
-			reqres.Response <-f.handle(reqres.Request)
-
-		case <-ctx.Done():
-			return
-	}
-}
-
-func Candidacy(ctx context.Context, termID int64) {
-	// TODO: do something
-}
-
-func Leader(ctx context.Context, termID int64) {
-	// TODO: do something
+	h := HTTPHandler{}
+	h.Listen(ctx, ch)
 }
