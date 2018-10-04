@@ -7,8 +7,8 @@ import (
 
 type Follower struct {
 	Leader *url.URL
-	TermID int64
-	Staet *State
+	Term   int64
+	State *State
 }
 
 func (f Follower) handle(request Request) Response {

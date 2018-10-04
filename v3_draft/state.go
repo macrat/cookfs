@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/vmihailenco/msgpack"
 	"github.com/google/uuid"
@@ -84,11 +83,9 @@ func calcStateID(state *State) StateID {
 }
 
 type State struct {
-	sync.Mutex
-
-	ID      StateID
-	PatchID PatchID
-	Recipes RecipeList
+	ID      StateID    `json:"id"`
+	PatchID PatchID    `json:"patch_id"`
+	Recipes RecipeList `json:"recipes"`
 }
 
 func NewState() *State {
@@ -103,44 +100,32 @@ func (s *State) String() string {
 }
 
 func (s *State) UnmarshalMsgpack(raw []byte) error {
-	s.Lock()
-
 	if err := msgpack.Unmarshal(raw, s); err != nil {
-		s.Unlock()
 		return err
 	}
 
 	id := calcStateID(s)
 	if id != s.ID {
-		s.Unlock()
 		return fmt.Errorf("invalid ID")
 	}
 
-	s.Unlock()
 	return nil
 }
 
 func (s *State) UnmarshalJSON(raw []byte) error {
-	s.Lock()
-
 	if err := json.Unmarshal(raw, s); err != nil {
-		s.Unlock()
 		return err
 	}
 
 	id := calcStateID(s)
 	if id != s.ID {
-		s.Unlock()
 		return fmt.Errorf("invalid ID")
 	}
 
-	s.Unlock()
 	return nil
 }
 
 func (s *State) Apply(patch Patch) {
-	s.Lock()
-
 	for k, v := range patch.Recipes {
 		if v == nil {
 			delete(s.Recipes, k)
@@ -151,8 +136,6 @@ func (s *State) Apply(patch Patch) {
 
 	s.PatchID = patch.ID
 	s.ID = calcStateID(s)
-
-	s.Unlock()
 }
 
 type PatchID struct {
@@ -172,9 +155,9 @@ func calcPatchID(patch Patch) PatchID {
 }
 
 type Patch struct {
-	Previous PatchID
-	ID       PatchID
-	Recipes  RecipeList
+	Previous PatchID    `json:"previous"`
+	ID       PatchID    `json:"id"`
+	Recipes  RecipeList `json:"recipes"`
 }
 
 func NewPatch(previous PatchID, recipes RecipeList) (Patch, error) {
@@ -237,8 +220,6 @@ func (p *Patch) UnmarshalJSON(raw []byte) error {
 }
 
 type PatchChain struct {
-	sync.Mutex
-
 	chain []Patch
 }
 
@@ -256,10 +237,7 @@ func (c *PatchChain) Has(id PatchID) bool {
 }
 
 func (c *PatchChain) ApplyTo(state *State, id PatchID) error {
-	c.Lock()
-
 	if !c.Has(id) {
-		c.Unlock()
 		return fmt.Errorf("unknown entry")
 	}
 
@@ -272,34 +250,26 @@ func (c *PatchChain) ApplyTo(state *State, id PatchID) error {
 		}
 	}
 
-	c.Unlock()
 	return nil
 }
 
 func (c *PatchChain) Add(patch Patch) error {
-	c.Lock()
-
 	if len(c.chain) == 0 {
 		c.chain = []Patch{patch}
-		c.Unlock()
 		return nil
 	}
 
 	for i, p := range c.chain {
 		if p.ID == patch.Previous {
 			c.chain = append(c.chain[:i+1], patch)
-			c.Unlock()
 			return nil
 		}
 	}
 
-	c.Unlock()
 	return fmt.Errorf("not chained")
 }
 
 func (c *PatchChain) New(recipes RecipeList) (Patch, error) {
-	c.Lock()
-
 	prev := PatchID{}
 	if len(c.chain) > 0 {
 		prev = c.chain[len(c.chain)-1].ID
@@ -310,8 +280,6 @@ func (c *PatchChain) New(recipes RecipeList) (Patch, error) {
 		return Patch{}, err
 	}
 	c.chain = append(c.chain, patch)
-
-	c.Unlock()
 
 	return patch, nil
 }

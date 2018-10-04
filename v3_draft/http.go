@@ -18,8 +18,13 @@ func newMux(ctx context.Context, ch chan RequestResponse) *http.ServeMux {
 		req := Request{Path: r.URL.Path}
 
 		if r.Method == "POST" {
-			data, err := msgpack.NewDecoder(r.Body).DecodeInterface()
+			data := NewRequestStruct(req.Path)
+			if data != nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 
+			err := msgpack.NewDecoder(r.Body).Decode(&data)
 			r.Body.Close()
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/url"
 )
 
 type Request struct {
@@ -23,4 +24,23 @@ type RequestResponse struct {
 type CommunicationHandler interface {
 	Listen(context.Context, chan RequestResponse)
 	Send(context.Context, *url.URL, Request) Response
+}
+
+type AliveMessage struct {
+	Leader  *url.URL `json:"leader"`
+	Term    int64    `json:"term"`
+	PatchID PatchID  `json:"patch_id"`
+}
+
+func NewRequestStruct(path string) interface{} {
+	switch path {
+	case "/term":
+		return AliveMessage{}
+
+	case "/journal":
+		return Patch{}
+
+	default:
+		return nil
+	}
 }
