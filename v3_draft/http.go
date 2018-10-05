@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -11,33 +12,53 @@ import (
 
 type HTTPHandler http.Client
 
-func newMux(ctx context.Context, ch chan RequestResponse) *http.ServeMux {
+func NewRequestStruct(path string) interface{} {
+	switch path {
+	case "/term":
+		return AliveMessage{}
+
+	case "/journal":
+		return Patch{}
+
+	default:
+		return nil
+	}
+}
+
+func processSet(f Follower, path string, body io.Reader) Response {
+	data := NewRequestStruct(path)
+	if data != nil {
+		return Response{StatusCode: 404}
+	}
+
+	if err := msgpack.NewDecoder(body).Decode(&data); err != nil {
+		return Response{StatusCode: 404}
+	}
+
+	switch path {
+	case "/term":
+		return f.AliveMessage(data.(AliveMessage))
+	}
+	return Response{StatusCode: 404}
+}
+
+func processGet(f Follower, path string) Response {
+	return Response{StatusCode: 500, Data: "this is test response"}
+}
+
+func newMux(ctx context.Context, f Follower) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		req := Request{Path: r.URL.Path}
+		var response Response
 
 		if r.Method == "POST" {
-			data := NewRequestStruct(req.Path)
-			if data != nil {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-
-			err := msgpack.NewDecoder(r.Body).Decode(&data)
+			response = processSet(f, r.URL.Path, r.Body)
 			r.Body.Close()
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-
-			req.Data = data
+		} else {
+			response = processGet(f, r.URL.Path)
 		}
 
-		res := make(chan Response)
-		ch <- RequestResponse{ctx, req, res}
-
-		response := <-res
 		data, err := msgpack.Marshal(response.Data)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -51,10 +72,10 @@ func newMux(ctx context.Context, ch chan RequestResponse) *http.ServeMux {
 	return mux
 }
 
-func (h *HTTPHandler) Listen(ctx context.Context, ch chan RequestResponse) {
+func (h *HTTPHandler) Listen(ctx context.Context, f Follower) {
 	srv := &http.Server{
-		Addr: ":8080",
-		Handler: newMux(ctx, ch),
+		Addr:    ":8080",
+		Handler: newMux(ctx, f),
 	}
 
 	go srv.ListenAndServe()

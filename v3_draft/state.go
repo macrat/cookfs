@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/vmihailenco/msgpack"
 	"github.com/google/uuid"
+	"github.com/vmihailenco/msgpack"
 )
 
 var (
@@ -33,7 +33,7 @@ func (u *UUID) UnmarshalJSON(raw []byte) error {
 		return fmt.Errorf("invalid UUID")
 	}
 
-	parsed, err := uuid.ParseBytes(raw[1:len(raw)-1])
+	parsed, err := uuid.ParseBytes(raw[1 : len(raw)-1])
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func calcStateID(state *State) StateID {
 	encoded, _ := msgpack.Marshal(struct {
 		PatchID PatchID
 		Recipes RecipeList
-	} {
+	}{
 		state.PatchID,
 		state.Recipes,
 	})
@@ -146,7 +146,7 @@ func calcPatchID(patch Patch) PatchID {
 	encoded, _ := msgpack.Marshal(struct {
 		Previous PatchID
 		Recipes  RecipeList
-	} {
+	}{
 		patch.Previous,
 		patch.Recipes,
 	})
@@ -163,7 +163,7 @@ type Patch struct {
 func NewPatch(previous PatchID, recipes RecipeList) (Patch, error) {
 	p := Patch{
 		Previous: previous,
-		Recipes: recipes,
+		Recipes:  recipes,
 	}
 	p.ID = calcPatchID(p)
 	return p, nil

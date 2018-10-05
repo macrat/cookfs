@@ -7,11 +7,9 @@ import (
 func main() {
 	ctx := context.Background()
 
-	ch := make(chan RequestResponse)
-
-	f := Follower{}
-	go f.Run(ctx, ch)
+	f := NewFollower()
+	go f.Run(ctx)
 
 	h := HTTPHandler{}
-	h.Listen(ctx, ch)
+	h.Listen(ctx, f)
 }
