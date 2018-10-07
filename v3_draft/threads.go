@@ -2,50 +2,95 @@ package main
 
 import (
 	"context"
-	"net/url"
+	"sync"
 	"time"
 )
 
-type Follower struct {
-	Leader *url.URL
-	Term   int64
-	State  *State
+type CookFS struct {
+	sync.RWMutex
 
-	alive chan struct{}
+	leader *Node
+	term   int64
+	state  *State
+
+	Nodes   func() []*Node
+	Handler CommunicationHandler
+
+	alive chan *Node
 }
 
-func NewFollower() Follower {
-	return Follower{alive: make(chan struct{})}
+func NewCookFS(handler CommunicationHandler, nodes func() []*Node) *CookFS {
+	return &CookFS{
+		state:   NewState(),
+		Nodes:   nodes,
+		Handler: handler,
+		alive:   make(chan *Node),
+	}
 }
 
-func (f Follower) AliveMessage(alive AliveMessage) Response {
-	if f.Leader == alive.Leader && f.Term == alive.Term || f.Term < alive.Term {
-		f.Leader = alive.Leader
-		f.Term = alive.Term
-		f.alive <- struct{}{}
+func (c *CookFS) AliveMessage(alive AliveMessage) Response {
+	c.RLock()
+	if (c.leader.String() == alive.Leader.String() && c.term == alive.Term) || c.term < alive.Term {
+		c.RUnlock()
+		c.Lock()
+		c.alive <- alive.Leader
+		c.leader = alive.Leader
+		c.term = alive.Term
+		c.Unlock()
 
 		return Response{StatusCode: 200}
 	} else {
+		c.RUnlock()
 		return Response{StatusCode: 409}
 	}
 }
 
-func (f Follower) Run(ctx context.Context, nodes func() []*url.URL) {
+func (c *CookFS) PollRequest(request PollRequest) Response {
+	return Response{StatusCode: 200}
+}
+
+func (c *CookFS) HandleRequest(request Request) Response {
+	if request.Data != nil {
+		switch request.Path {
+		case "/term":
+			return c.AliveMessage(*request.Data.(*AliveMessage))
+
+		case "/term/poll":
+			return c.PollRequest(*request.Data.(*PollRequest))
+
+		default:
+			return Response{StatusCode: 404}
+		}
+	} else {
+		switch request.Path {
+		case "/term":
+			c.RLock()
+			msg := AliveMessage{c.leader, c.term, c.state.PatchID}
+			c.RUnlock()
+			return Response{200, msg}
+
+		default:
+			return Response{StatusCode: 404}
+		}
+	}
+}
+
+func (c *CookFS) RunFollower(ctx context.Context) {
 	var cancelCandidacy context.CancelFunc
 
 	for {
 		select {
-		case <-f.alive:
-			if cancelCandidacy != nil {
+		case leader := <-c.alive:
+			if leader.String() != c.Nodes()[0].String() && cancelCandidacy != nil {
 				cancelCandidacy()
 				cancelCandidacy = nil
 			}
 			continue
 
 		case <-time.After(500 * time.Millisecond):
-			var c context.Context
-			c, cancelCandidacy = context.WithTimeout(ctx, 1*time.Second)
-			go Candidacy(c, f.Term+1, nodes)
+			var ctx2 context.Context
+			ctx2, cancelCandidacy = context.WithCancel(ctx)
+			go c.RunCandidacy(ctx2)
 
 		case <-ctx.Done():
 			return
@@ -53,27 +98,42 @@ func (f Follower) Run(ctx context.Context, nodes func() []*url.URL) {
 	}
 }
 
-func Candidacy(ctx context.Context, term int64, nodes func() []*url.URL) {
+func (c *CookFS) RunCandidacy(ctx context.Context) {
 	println("been candidacy")
 
-	worker := NewWorkerPool(ctx, 10)
+	withTimeout, _ := context.WithTimeout(ctx, 1*time.Second)
 
-	if worker.OverHalf(nodes(), "/term/poll", term) {
-		Leader(ctx, term, nodes, worker)
+	worker := NewWorkerPool(ctx, c.Handler, 10)
+
+	c.RLock()
+	msg := PollRequest{c.Nodes()[0], c.term + 1, c.state.PatchID}
+	c.RUnlock()
+
+	if worker.OverHalf(withTimeout, c.Nodes(), "/term/poll", msg) {
+		c.Lock()
+		c.term++
+		c.leader = c.Nodes()[0]
+		c.Unlock()
+		c.RunLeader(ctx, worker)
 	}
 }
 
-func Leader(ctx context.Context, term int64, nodes func() []*url.URL, worker WorkerPool) {
-	// TODO: do something
-	interval := timer.Interval(100*time.Millisecond)
+func (c *CookFS) RunLeader(ctx context.Context, worker WorkerPool) {
+	println("been leader")
+
+	interval := time.Tick(100 * time.Millisecond)
 
 	for {
 		select {
-			case <-interval:
-				worker.SendOnly(nodes(), "/term", AliveMessage{nodes()[0], term, /*TODO patch id*/})
+		case <-interval:
+			c.RLock()
+			msg := AliveMessage{c.Nodes()[0], c.term, c.state.PatchID}
+			c.RUnlock()
+			worker.SendOnly(ctx, c.Nodes(), "/term", msg)
 
-			case <-ctx.Done():
-				return
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -82,13 +142,13 @@ type WorkerTask struct {
 	response chan Response
 }
 
-func CommunicateWorker(ctx context.Context, task chan WorkerTask) {
+func CommunicateWorker(ctx context.Context, handler CommunicationHandler, task chan WorkerTask) {
 	for {
 		select {
 		case t := <-task:
-			result := handler.Send(ctx, task.request)
-			if task.response != nil {
-				task.response <- result
+			result := handler.Send(ctx, t.request)
+			if t.response != nil {
+				t.response <- result
 			}
 
 		case <-ctx.Done():
@@ -102,27 +162,36 @@ type WorkerPool struct {
 	ctx  context.Context
 }
 
-func NewWorkerPool(ctx context.Context, workersNum int) WorkerPool {
+func NewWorkerPool(ctx context.Context, handler CommunicationHandler, workersNum int) WorkerPool {
 	w := WorkerPool{make(chan WorkerTask), ctx}
 
 	for i := 0; i < workersNum; i++ {
-		go CommunicateWorker(ctx, w.task)
+		go CommunicateWorker(ctx, handler, w.task)
 	}
 
 	return w
 }
 
-func (w WorkerPool) SendOnly(nodes []*url.URL, path string, data interface{}) {
+func (w WorkerPool) SendOnly(ctx context.Context, nodes []*Node, path string, data interface{}) {
 	for _, node := range nodes {
-		w.task <- WorkerTask{{node, path, data}, nil}
+		w.task <- WorkerTask{Request{node, path, data}, nil}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.ctx.Done():
+			return
+
+		default:
+		}
 	}
 }
 
-func (w WorkerPool) OverHalf(nodes []*url.URL, path string, data interface{}) bool {
-	response := chan Response
+func (w WorkerPool) OverHalf(ctx context.Context, nodes []*Node, path string, data interface{}) bool {
+	response := make(chan Response)
 
-	for _, node ;= range nodes {
-		w.task <- WorkerTask{{node, path, data}, response}
+	for _, node := range nodes {
+		w.task <- WorkerTask{Request{node, path, data}, response}
 	}
 
 	allow := 0
@@ -130,7 +199,7 @@ func (w WorkerPool) OverHalf(nodes []*url.URL, path string, data interface{}) bo
 	for range nodes {
 		select {
 		case resp := <-response:
-			if resp.StautsCode == 200 || resp.StatusCode == 204 {
+			if resp.StatusCode == 200 || resp.StatusCode == 204 {
 				allow++
 			} else {
 				deny++
@@ -142,6 +211,8 @@ func (w WorkerPool) OverHalf(nodes []*url.URL, path string, data interface{}) bo
 				return false
 			}
 
+		case <-ctx.Done():
+			return false
 		case <-w.ctx.Done():
 			return false
 		}

@@ -3,60 +3,43 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/vmihailenco/msgpack"
 )
 
 type HTTPHandler http.Client
 
-func NewRequestStruct(path string) interface{} {
-	switch path {
-	case "/term":
-		return AliveMessage{}
-
-	case "/journal":
-		return Patch{}
-
-	default:
-		return nil
-	}
-}
-
-func processSet(f Follower, path string, body io.Reader) Response {
+func processSet(c *CookFS, path string, body io.Reader) Response {
 	data := NewRequestStruct(path)
-	if data != nil {
+	if data == nil {
 		return Response{StatusCode: 404}
 	}
 
-	if err := msgpack.NewDecoder(body).Decode(&data); err != nil {
+	if err := msgpack.NewDecoder(body).Decode(data); err != nil {
 		return Response{StatusCode: 404}
 	}
 
-	switch path {
-	case "/term":
-		return f.AliveMessage(data.(AliveMessage))
-	}
-	return Response{StatusCode: 404}
+	return c.HandleRequest(Request{c.Nodes()[0], path, data})
 }
 
-func processGet(f Follower, path string) Response {
-	return Response{StatusCode: 500, Data: "this is test response"}
+func processGet(c *CookFS, path string) Response {
+	return c.HandleRequest(Request{c.Nodes()[0], path, nil})
 }
 
-func newMux(ctx context.Context, f Follower) *http.ServeMux {
+func newMux(ctx context.Context, c *CookFS) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var response Response
 
 		if r.Method == "POST" {
-			response = processSet(f, r.URL.Path, r.Body)
+			response = processSet(c, r.URL.Path, r.Body)
 			r.Body.Close()
 		} else {
-			response = processGet(f, r.URL.Path)
+			response = processGet(c, r.URL.Path)
 		}
 
 		data, err := msgpack.Marshal(response.Data)
@@ -72,10 +55,10 @@ func newMux(ctx context.Context, f Follower) *http.ServeMux {
 	return mux
 }
 
-func (h *HTTPHandler) Listen(ctx context.Context, f Follower) {
+func (h *HTTPHandler) Listen(ctx context.Context, node *Node, c *CookFS) {
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: newMux(ctx, f),
+		Addr:    fmt.Sprintf(":%s", node.Port()),
+		Handler: newMux(ctx, c),
 	}
 
 	go srv.ListenAndServe()
@@ -84,8 +67,8 @@ func (h *HTTPHandler) Listen(ctx context.Context, f Follower) {
 	srv.Shutdown(ctx)
 }
 
-func (h *HTTPHandler) Send(ctx context.Context, host *url.URL, req Request) Response {
-	u := *host
+func (h *HTTPHandler) Send(ctx context.Context, req Request) Response {
+	u := *req.Node
 	u.Path = u.Path + req.Path
 
 	var request *http.Request
