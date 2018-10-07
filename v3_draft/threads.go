@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -15,15 +16,17 @@ type CookFS struct {
 
 	Nodes   func() []*Node
 	Handler CommunicationHandler
+	Config  Config
 
 	alive chan *Node
 }
 
-func NewCookFS(handler CommunicationHandler, nodes func() []*Node) *CookFS {
+func NewCookFS(handler CommunicationHandler, nodes func() []*Node, config Config) *CookFS {
 	return &CookFS{
 		state:   NewState(),
 		Nodes:   nodes,
 		Handler: handler,
+		Config:  config,
 		alive:   make(chan *Node),
 	}
 }
@@ -77,17 +80,27 @@ func (c *CookFS) HandleRequest(request Request) Response {
 
 func (c *CookFS) RunFollower(ctx context.Context) {
 	var cancelCandidacy context.CancelFunc
+	candidacyCount := 0
 
 	for {
+		deathTimer := time.Duration(rand.Int63n(int64(c.Config.CandidacyWaitMax - c.Config.CandidacyWaitMin))) + c.Config.CandidacyWaitMin
+		if candidacyCount == 0 {
+			deathTimer += c.Config.LeaderDeathTimer
+		} else {
+			deathTimer *= time.Duration(candidacyCount + 1)
+		}
+
 		select {
 		case leader := <-c.alive:
+			candidacyCount = 0
 			if leader.String() != c.Nodes()[0].String() && cancelCandidacy != nil {
 				cancelCandidacy()
 				cancelCandidacy = nil
 			}
 			continue
 
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(deathTimer):
+			candidacyCount++
 			var ctx2 context.Context
 			ctx2, cancelCandidacy = context.WithCancel(ctx)
 			go c.RunCandidacy(ctx2)
@@ -103,7 +116,7 @@ func (c *CookFS) RunCandidacy(ctx context.Context) {
 
 	withTimeout, _ := context.WithTimeout(ctx, 1*time.Second)
 
-	worker := NewWorkerPool(ctx, c.Handler, 10)
+	worker := NewWorkerPool(ctx, c.Handler, c.Config.SendWorkersNum)
 
 	c.RLock()
 	msg := PollRequest{c.Nodes()[0], c.term + 1, c.state.PatchID}
@@ -121,7 +134,7 @@ func (c *CookFS) RunCandidacy(ctx context.Context) {
 func (c *CookFS) RunLeader(ctx context.Context, worker WorkerPool) {
 	println("been leader")
 
-	interval := time.Tick(100 * time.Millisecond)
+	interval := time.Tick(c.Config.AliveInterval)
 
 	for {
 		select {

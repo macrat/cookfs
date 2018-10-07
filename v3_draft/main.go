@@ -20,7 +20,7 @@ func main() {
 
 	h := &HTTPHandler{}
 
-	c := NewCookFS(h, Nodes)
+	c := NewCookFS(h, Nodes, DefaultConfig)
 	go c.RunFollower(ctx)
 
 	h.Listen(ctx, Nodes()[0], c)
