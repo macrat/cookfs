@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack"
@@ -21,6 +22,11 @@ func NewUUID(data []byte) UUID {
 
 func (u UUID) String() string {
 	return uuid.UUID(u).String()
+}
+
+func (u UUID) Binary() []byte {
+	b, _ := uuid.UUID(u).MarshalBinary()
+	return b
 }
 
 func (u UUID) MarshalJSON() ([]byte, error) {
@@ -66,31 +72,59 @@ func (r RecipeList) MarshalMsgpack() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+type ChunkHolders map[ChunkID][]*Node
+
+func (c ChunkHolders) EncodeMsgpack(enc *msgpack.Encoder) error {
+	if err := enc.EncodeMapLen(len(c)); err != nil {
+		return err
+	}
+
+	keys := make([]ChunkID, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return bytes.Compare(keys[i].Binary(), keys[j].Binary()) >= 0
+	})
+
+	for _, k := range keys {
+		if err := enc.EncodeMulti(k, c[k]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type StateID struct {
 	UUID
 }
 
 func calcStateID(state *State) StateID {
 	encoded, _ := msgpack.Marshal(struct {
-		PatchID PatchID
-		Recipes RecipeList
+		PatchID      PatchID
+		Recipes      RecipeList
+		ChunkHolders ChunkHolders
 	}{
 		state.PatchID,
 		state.Recipes,
+		state.ChunkHolders,
 	})
 
 	return StateID{NewUUID(encoded)}
 }
 
 type State struct {
-	ID      StateID    `json:"id"`
-	PatchID PatchID    `json:"patch_id"`
-	Recipes RecipeList `json:"recipes"`
+	ID           StateID      `json:"id"`
+	PatchID      PatchID      `json:"patch_id"`
+	Recipes      RecipeList   `json:"recipes"`
+	ChunkHolders ChunkHolders `json:"chunk_holders"`
 }
 
 func NewState() *State {
 	s := State{}
-	s.Recipes = make(map[string]Recipe)
+	s.Recipes = make(RecipeList)
+	s.ChunkHolders = make(ChunkHolders)
 	s.ID = calcStateID(&s)
 	return &s
 }
