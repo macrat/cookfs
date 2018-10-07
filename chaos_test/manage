@@ -5,8 +5,7 @@
 function info() {
 	for ID in ${IDS}; do
 		printf "${ID}: "
-		curl --silent --max-time 0.1 http://localhost:$((${BASE_PORT} + ${ID}))/leader
-		echo
+		../bin/cookctl --server http://localhost:$((${BASE_PORT} + ${ID})) info --format json
 	done
 }
 
@@ -17,7 +16,7 @@ function manage_random() {
 function leader() {
 	make bin/cookctl >/dev/null 2>&1
 
-	../bin/cookctl `for ID in ${IDS}; do printf -- "--server http://localhost:$((${BASE_PORT} + ${ID})) "; done` info --format json | jq -r .leader | sed -e 's/http:\/\///' -e 's/:80//'
+	../bin/cookctl `for ID in ${IDS}; do printf -- "--server http://localhost:$((${BASE_PORT} + ${ID})) "; done` info --format json | jq -r .Leader | sed -e 's/http:\/\///' -e 's/:80//'
 }
 
 function manage_leader() {

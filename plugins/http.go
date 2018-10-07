@@ -1,4 +1,4 @@
-package main
+package plugins
 
 import (
 	"bytes"
@@ -8,32 +8,34 @@ import (
 	"net/http"
 
 	"github.com/vmihailenco/msgpack"
+
+	"github.com/macrat/cookfs/cooklib"
 )
 
 type HTTPHandler http.Client
 
-func processSet(c *CookFS, path string, body io.Reader) Response {
-	data := NewRequestStruct(path)
+func processSet(c *cooklib.CookFS, path string, body io.Reader) cooklib.Response {
+	data := cooklib.NewRequestStruct(path)
 	if data == nil {
-		return Response{StatusCode: 404}
+		return cooklib.Response{StatusCode: 404}
 	}
 
 	if err := msgpack.NewDecoder(body).Decode(data); err != nil {
-		return Response{StatusCode: 404}
+		return cooklib.Response{StatusCode: 404}
 	}
 
-	return c.HandleRequest(Request{c.Nodes()[0], path, data})
+	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, data})
 }
 
-func processGet(c *CookFS, path string) Response {
-	return c.HandleRequest(Request{c.Nodes()[0], path, nil})
+func processGet(c *cooklib.CookFS, path string) cooklib.Response {
+	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, nil})
 }
 
-func newMux(ctx context.Context, c *CookFS) *http.ServeMux {
+func newMux(ctx context.Context, c *cooklib.CookFS) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		var response Response
+		var response cooklib.Response
 
 		if r.Method == "POST" {
 			response = processSet(c, r.URL.Path, r.Body)
@@ -55,7 +57,7 @@ func newMux(ctx context.Context, c *CookFS) *http.ServeMux {
 	return mux
 }
 
-func (h *HTTPHandler) Listen(ctx context.Context, node *Node, c *CookFS) {
+func (h *HTTPHandler) Listen(ctx context.Context, node *cooklib.Node, c *cooklib.CookFS) {
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", node.Port()),
 		Handler: newMux(ctx, c),
@@ -67,7 +69,7 @@ func (h *HTTPHandler) Listen(ctx context.Context, node *Node, c *CookFS) {
 	srv.Shutdown(ctx)
 }
 
-func (h *HTTPHandler) Send(ctx context.Context, req Request) Response {
+func (h *HTTPHandler) Send(ctx context.Context, req cooklib.Request) cooklib.Response {
 	u := *req.Node
 	u.Path = u.Path + req.Path
 
@@ -78,22 +80,22 @@ func (h *HTTPHandler) Send(ctx context.Context, req Request) Response {
 	} else {
 		data, err := msgpack.Marshal(req.Data)
 		if err != nil {
-			return Response{StatusCode: 400}
+			return cooklib.Response{StatusCode: 400}
 		}
 		request, err = http.NewRequest("POST", (&u).String(), bytes.NewReader(data))
 	}
 	if err != nil {
-		return Response{StatusCode: 400}
+		return cooklib.Response{StatusCode: 400}
 	}
 
 	response, err := (*http.Client)(h).Do(request.WithContext(ctx))
 	if err != nil {
-		return Response{StatusCode: 400}
+		return cooklib.Response{StatusCode: 400}
 	}
 
 	data, err := msgpack.NewDecoder(response.Body).DecodeInterface()
 	if err != nil {
-		return Response{StatusCode: 400}
+		return cooklib.Response{StatusCode: 400}
 	}
-	return Response{response.StatusCode, data}
+	return cooklib.Response{response.StatusCode, data}
 }

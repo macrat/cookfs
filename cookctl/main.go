@@ -2,114 +2,97 @@ package main
 
 import (
 	"time"
-	"bytes"
-	"path"
 	"net/url"
 	"fmt"
 	"os"
-	"net/http"
 	"math/rand"
 	"encoding/json"
+	"context"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/go-yaml/yaml"
-	"github.com/macrat/cookfs/cookfs"
+
+	"github.com/macrat/cookfs/cooklib"
+	"github.com/macrat/cookfs/plugins"
 )
 
-func Request(servers []*url.URL, method, endpoint string, data interface{}) (*http.Response, error) {
-	var err error
+func Request(servers []*cooklib.Node, path string, data interface{}) cooklib.Response {
+	handler := &plugins.HTTPHandler{}
 
-	var body []byte
-	if data != nil {
-		body, err = json.Marshal(data)
-		if err != nil {
-			return nil, err
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	resp := make(chan cooklib.Response)
+
+	for _, server := range servers {
+		go func(server *cooklib.Node) {
+			r := handler.Send(ctx, cooklib.Request{server, path, data})
+			if r.StatusCode == 200 || r.StatusCode == 204 {
+				resp <- r
+				cancel()
+			}
+		}(server)
 	}
 
-	used := []int{}
+	select {
+	case r := <-resp:
+		return r
 
-	for  {
-		var i int
-		for {
-			i = rand.Intn(len(servers))
-			ok := true
-			for _, x := range used {
-				if i == x {
-					ok = false
-					break
-				}
-			}
-			if ok {
-				break
-			}
-		}
-
-		used = append(used, i)
-		server := *servers[i]
-		server.Path = path.Join(server.Path, endpoint)
-
-		req, err := http.NewRequest(method, (&server).String(), bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-
-		var resp *http.Response
-		resp, err = (&http.Client{}).Do(req)
-		if err == nil {
-			return resp, nil
-		}
-
-		if len(used) == len(servers) {
-			return nil, err
-		}
+	case <-ctx.Done():
+		return cooklib.Response{StatusCode: 502}
 	}
 }
 
-func Info(servers []*url.URL, format string) error {
-	resp, err := Request(servers, "GET", "/leader", nil)
-	if err != nil {
-		return err
+func Info(servers []*cooklib.Node, format string) error {
+	resp := Request(servers, "/term", nil)
+	if resp.StatusCode != 200 && resp.StatusCode != 204 {
+		return fmt.Errorf("failed to request: %d", resp.StatusCode)
 	}
 
-	var status cookfs.TermStatus
-	json.NewDecoder(resp.Body).Decode(&status)
-
 	if format == "yaml" {
-		y, _ := yaml.Marshal(status)
+		y, _ := yaml.Marshal(resp.Data)
 		fmt.Println(string(y))
 	} else {
-		j, _ := json.Marshal(status)
+		j, _ := json.Marshal(resp.Data)
 		fmt.Println(string(j))
 	}
 
 	return nil
 }
 
-func Upload(servers []*url.URL, tag string, file *os.File) error {
+func Upload(servers []*cooklib.Node, tag string, file *os.File) error {
 	return fmt.Errorf("not implemented")
 }
 
-func Download(servers []*url.URL, tag string, file *os.File) error {
+func Download(servers []*cooklib.Node, tag string, file *os.File) error {
 	return fmt.Errorf("not implemented")
+}
+
+func ConvertServers(servers []*url.URL) []*cooklib.Node {
+	r := make([]*cooklib.Node, 0, len(servers))
+
+	for _, s := range servers {
+		r = append(r, (*cooklib.Node)(s))
+	}
+
+	return r
 }
 
 func main() {
 	rand.Seed(time.Now().Unix())
 
-	server := kingpin.Flag("server", "Server address.").Default("http://localhost:8080").URLList()
+	server := kingpin.Flag("server", "Server address.").Default("http://localhost:5790").URLList()
 
 	infoCommand := kingpin.Command("info", "Get server information.")
 	infoFormat := infoCommand.Flag("format", "Output format. yaml or json.").Default("yaml").Enum("yaml", "json")
 	infoCommand.Action(func(c *kingpin.ParseContext) error {
-		return Info(*server, *infoFormat)
+		return Info(ConvertServers(*server), *infoFormat)
 	})
 
 	uploadCommand := kingpin.Command("upload", "Upload file.")
 	uploadTag := uploadCommand.Arg("tag", "Tag name.").Required().String()
 	uploadFile := uploadCommand.Arg("file", "File name.").File()
 	uploadCommand.Action(func(c *kingpin.ParseContext) error {
-		return Upload(*server, *uploadTag, *uploadFile)
+		return Upload(ConvertServers(*server), *uploadTag, *uploadFile)
 	})
 
 
@@ -117,7 +100,7 @@ func main() {
 	downloadTag := downloadCommand.Arg("tag", "Tag name.").Required().String()
 	downloadFile := downloadCommand.Arg("file", "File name.").File()
 	downloadCommand.Action(func(c *kingpin.ParseContext) error {
-		return Download(*server, *downloadTag, *downloadFile)
+		return Download(ConvertServers(*server), *downloadTag, *downloadFile)
 	})
 
 	kingpin.Parse()

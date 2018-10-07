@@ -1,10 +1,10 @@
 .PHONY: all
 all: docker-compose.yml ../bin/cookfs ../bin/cookctl
 
-../bin/cookfs: $(shell ls ../*.go ../cookfs/*.go) ../Makefile
+../bin/cookfs: $(shell ls ../*.go ../cooklib/*.go ../plugins/*.go) ../Makefile
 	cd .. && make bin/cookfs
 
-../bin/cookctl: $(shell ls ../cookctl/*.go ../cookfs/*.go) ../Makefile
+../bin/cookctl: $(shell ls ../cookctl/*.go ../cooklib/*.go ../plugins/*.go) ../Makefile
 	cd .. && make bin/cookctl
 
 docker-compose.yml: generate-compose env

@@ -2,33 +2,29 @@ package main
 
 import (
 	"os"
+	"context"
 
-	"github.com/macrat/cookfs/cookfs"
+	"github.com/macrat/cookfs/cooklib"
+	"github.com/macrat/cookfs/plugins"
 )
 
+func Nodes() []*cooklib.Node {
+	ns := []*cooklib.Node{}
+
+	for _, x := range os.Args[1:] {
+		ns = append(ns, cooklib.MustParseNode(x))
+	}
+
+	return ns
+}
+
 func main() {
-	self := cookfs.ForceParseNode(os.Args[1])
+	ctx := context.Background()
 
-	nodes := []*cookfs.Node{self}
-	for _, u := range os.Args[2:] {
-		nodes = append(nodes, cookfs.ForceParseNode(u))
-	}
+	h := &plugins.HTTPHandler{}
 
-	recipe := cookfs.NewInMemoryRecipeStore()
-	chunk := cookfs.NewInMemoryChunkStore()
-	discover := cookfs.SimpleDiscoverPlugin{self, nodes}
-	transmit := &cookfs.HTTPTransmitPlugin{}
-	receive := cookfs.NewHTTPReceivePlugin()
+	c := cooklib.NewCookFS(h, Nodes, cooklib.DefaultConfig)
+	go c.RunFollower(ctx)
 
-	c := cookfs.NewCookFS(recipe, chunk, discover, transmit, receive)
-
-	stop := make(chan struct{})
-	c.Run(stop)
-	for {
-		select {
-		case <-stop:
-			panic("stopped")
-			return
-		}
-	}
+	h.Listen(ctx, Nodes()[0], c)
 }
