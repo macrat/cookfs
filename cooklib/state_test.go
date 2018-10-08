@@ -41,6 +41,32 @@ func Test_UUID(t *testing.T) {
 	}
 }
 
+func Test_RecipeList_Patch(t *testing.T) {
+	r := RecipeList{
+		"/foo/bar":   Recipe{NewChunkID([]byte("hello")), NewChunkID([]byte("world"))},
+		"/hoge/fuga": Recipe{NewChunkID([]byte("abc"))},
+	}
+
+	patch := RecipeList{
+		"/hoge/fuga": nil,
+		"/piyo":      Recipe{NewChunkID([]byte("def"))},
+	}
+
+	r.Apply(patch)
+
+	if len(r) != 2 {
+		t.Errorf("unexcepted number of recipes: excepted 2 but got %d", len(r))
+	}
+
+	if len(r["/foo/bar"]) != 2 {
+		t.Errorf("unexcepted recipe: excepted length is %d but got %d", 2, len(r["/foo/bar"]))
+	}
+
+	if len(r["/piyo"]) != 1 {
+		t.Errorf("unexcepted recipe: excepted length is %d but got %d", 1, len(r["/piyo"]))
+	}
+}
+
 func Test_ChunkHolders(t *testing.T) {
 	ch := ChunkHolders{
 		NewChunkID([]byte("hello")): []*Node{MustParseNode("http://example.com")},
@@ -66,5 +92,52 @@ func Test_ChunkHolders(t *testing.T) {
 		if fmt.Sprint(ch[k]) != fmt.Sprint(v) {
 			t.Errorf("failed to unmarshal from messagepack: %s must have %s but got %s", k, ch[k], v)
 		}
+	}
+}
+
+func Test_ChunkHoldersPatch(t *testing.T) {
+	ch := ChunkHolders{
+		NewChunkID([]byte("hello")): []*Node{MustParseNode("http://example.com")},
+		NewChunkID([]byte("world")): []*Node{MustParseNode("http://foobar.com")},
+	}
+
+	patch := ChunkHoldersPatch{
+		MustParseNode("http://example.com"): ChunkPatch{
+			Add: []ChunkID{NewChunkID([]byte("foo"))},
+		},
+		MustParseNode("http://foobar.com"): ChunkPatch{
+			Del: []ChunkID{NewChunkID([]byte("world"))},
+		},
+		MustParseNode("http://hoge.com"): ChunkPatch{
+			Add: []ChunkID{NewChunkID([]byte("fuga"))},
+			Del: []ChunkID{NewChunkID([]byte("foo"))},
+		},
+	}
+
+	ch.Apply(patch)
+
+	if len(ch) != 3 {
+		t.Errorf("unexcepted number of chunks: excepted 3 but got %d", len(ch))
+	}
+
+	if len(ch[NewChunkID([]byte("foo"))]) != 1 {
+		t.Errorf("unexcepted number of nodes: excepted 1 but got %d", len(ch[NewChunkID([]byte("foo"))]))
+	}
+	if ch[NewChunkID([]byte("foo"))][0].String() != "http://example.com" {
+		t.Errorf("unexcepted chunk holder: excepted http://example.com but got %s", ch[NewChunkID([]byte("foo"))][0].String())
+	}
+
+	if len(ch[NewChunkID([]byte("hello"))]) != 1 {
+		t.Errorf("unexcepted number of nodes: excepted 1 but got %d", len(ch[NewChunkID([]byte("hello"))]))
+	}
+	if ch[NewChunkID([]byte("hello"))][0].String() != "http://example.com" {
+		t.Errorf("unexcepted chunk holder: excepted http://example.com but got %s", ch[NewChunkID([]byte("hello"))][0].String())
+	}
+
+	if len(ch[NewChunkID([]byte("fuga"))]) != 1 {
+		t.Errorf("unexcepted number of nodes: excepted 1 but got %d", len(ch[NewChunkID([]byte("fuga"))]))
+	}
+	if ch[NewChunkID([]byte("fuga"))][0].String() != "http://hoge.com" {
+		t.Errorf("unexcepted chunk holder: excepted http://example.com but got %s", ch[NewChunkID([]byte("fuga"))][0].String())
 	}
 }

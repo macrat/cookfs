@@ -14,8 +14,8 @@ type Config struct {
 }
 
 var (
-	DefaultConfig = Config {
-		AliveInterval: 100 * time.Millisecond,
+	DefaultConfig = Config{
+		AliveInterval:    100 * time.Millisecond,
 		LeaderDeathTimer: 300 * time.Millisecond,
 		CandidacyWaitMin: 100 * time.Millisecond,
 		CandidacyWaitMax: 700 * time.Millisecond,

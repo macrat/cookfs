@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack"
@@ -61,6 +62,16 @@ type Recipe []ChunkID
 
 type RecipeList map[string]Recipe
 
+func (r RecipeList) Apply(patch RecipeList) {
+	for k, v := range patch {
+		if v == nil {
+			delete(r, k)
+		} else {
+			r[k] = v
+		}
+	}
+}
+
 func (r RecipeList) MarshalMsgpack() ([]byte, error) {
 	data := make(map[string]interface{})
 	for k, v := range r {
@@ -74,6 +85,55 @@ func (r RecipeList) MarshalMsgpack() ([]byte, error) {
 
 type ChunkHolders map[ChunkID][]*Node
 
+func (c ChunkHolders) Delete(chunk ChunkID, node *Node) {
+	if _, ok := c[chunk]; !ok {
+		return
+	}
+
+	idx := sort.Search(len(c[chunk]), func(i int) bool {
+		return strings.Compare(c[chunk][i].String(), node.String()) >= 0
+	})
+
+	if idx >= 0 && idx < len(c[chunk]) {
+		c[chunk] = append(c[chunk][:idx], c[chunk][idx+1:]...)
+
+		if len(c[chunk]) == 0 {
+			delete(c, chunk)
+		}
+	}
+}
+
+func (c ChunkHolders) Add(chunk ChunkID, node *Node) {
+	if _, ok := c[chunk]; !ok {
+		c[chunk] = []*Node{node}
+		return
+	}
+
+	idx := sort.Search(len(c[chunk]), func(i int) bool {
+		return strings.Compare(c[chunk][i].String(), node.String()) >= 0
+	})
+
+	if idx < 0 {
+		c[chunk] = append(c[chunk], node)
+
+		sort.Slice(c[chunk], func(i, j int) bool {
+			return strings.Compare(c[chunk][i].String(), c[chunk][j].String()) >= 0
+		})
+	}
+}
+
+func (c ChunkHolders) Apply(patch ChunkHoldersPatch) {
+	for node, p := range patch {
+		for _, chunk := range p.Del {
+			c.Delete(chunk, node)
+		}
+
+		for _, chunk := range p.Add {
+			c.Add(chunk, node)
+		}
+	}
+}
+
 func (c ChunkHolders) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if err := enc.EncodeMapLen(len(c)); err != nil {
 		return err
@@ -85,6 +145,46 @@ func (c ChunkHolders) EncodeMsgpack(enc *msgpack.Encoder) error {
 	}
 	sort.Slice(keys, func(i, j int) bool {
 		return bytes.Compare(keys[i].Binary(), keys[j].Binary()) >= 0
+	})
+
+	for _, k := range keys {
+		if err := enc.EncodeMulti(k, c[k]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type ChunkPatch struct {
+	Add []ChunkID
+	Del []ChunkID
+}
+
+func (c ChunkPatch) MarshalMsgpack() ([]byte, error) {
+	sort.Slice(c.Add, func(i, j int) bool {
+		return bytes.Compare(c.Add[i].Binary(), c.Add[j].Binary()) >= 0
+	})
+	sort.Slice(c.Del, func(i, j int) bool {
+		return bytes.Compare(c.Del[i].Binary(), c.Del[j].Binary()) >= 0
+	})
+
+	return msgpack.Marshal(c)
+}
+
+type ChunkHoldersPatch map[*Node]ChunkPatch
+
+func (c ChunkHoldersPatch) EncodeMsgpack(enc *msgpack.Encoder) error {
+	if err := enc.EncodeMapLen(len(c)); err != nil {
+		return err
+	}
+
+	keys := make([]*Node, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return strings.Compare(keys[i].String(), keys[j].String()) >= 0
 	})
 
 	for _, k := range keys {
@@ -160,13 +260,8 @@ func (s *State) UnmarshalJSON(raw []byte) error {
 }
 
 func (s *State) Apply(patch Patch) {
-	for k, v := range patch.Recipes {
-		if v == nil {
-			delete(s.Recipes, k)
-		} else {
-			s.Recipes[k] = v
-		}
-	}
+	s.Recipes.Apply(patch.Recipes)
+	s.ChunkHolders.Apply(patch.Chunks)
 
 	s.PatchID = patch.ID
 	s.ID = calcStateID(s)
@@ -180,51 +275,87 @@ func calcPatchID(patch Patch) PatchID {
 	encoded, _ := msgpack.Marshal(struct {
 		Previous PatchID
 		Recipes  RecipeList
+		Chunks   ChunkHoldersPatch
 	}{
 		patch.Previous,
 		patch.Recipes,
+		patch.Chunks,
 	})
 
 	return PatchID{NewUUID(encoded)}
 }
 
 type Patch struct {
-	Previous PatchID    `json:"previous"`
-	ID       PatchID    `json:"id"`
-	Recipes  RecipeList `json:"recipes"`
+	Previous PatchID           `json:"previous"`
+	ID       PatchID           `json:"id"`
+	Recipes  RecipeList        `json:"recipes"`
+	Chunks   ChunkHoldersPatch `json:"chunks"`
 }
 
-func NewPatch(previous PatchID, recipes RecipeList) (Patch, error) {
+func NewPatch(previous PatchID, recipes RecipeList, chunks ChunkHoldersPatch) (Patch, error) {
 	p := Patch{
 		Previous: previous,
 		Recipes:  recipes,
+		Chunks:   chunks,
 	}
 	p.ID = calcPatchID(p)
 	return p, nil
 }
 
-func (p Patch) AddedRecipes() int {
-	r := 0
-	for _, x := range p.Recipes {
-		if x != nil {
-			r++
-		}
-	}
-	return r
-}
-
-func (p Patch) DeletedRecipes() int {
-	r := 0
+func (p Patch) RecipesNum() (added, deleted int) {
+	a := 0
+	d := 0
 	for _, x := range p.Recipes {
 		if x == nil {
-			r++
+			d++
+		} else {
+			a++
 		}
 	}
-	return r
+	return a, d
+}
+
+func (p Patch) ChunksNum() (added, deleted int) {
+	a := []ChunkID{}
+	d := []ChunkID{}
+
+	for _, c := range p.Chunks {
+		for _, chunk := range c.Add {
+			idx := sort.Search(len(a), func(i int) bool {
+				return bytes.Compare(a[i].Binary(), chunk.Binary()) >= 0
+			})
+			if idx >= 0 {
+				continue
+			}
+
+			a = append(a, chunk)
+			sort.Slice(a, func(i, j int) bool {
+				return bytes.Compare(a[i].Binary(), a[j].Binary()) >= 0
+			})
+		}
+
+		for _, chunk := range c.Del {
+			idx := sort.Search(len(d), func(i int) bool {
+				return bytes.Compare(d[i].Binary(), chunk.Binary()) >= 0
+			})
+			if idx >= 0 {
+				continue
+			}
+
+			d = append(d, chunk)
+			sort.Slice(d, func(i, j int) bool {
+				return bytes.Compare(d[i].Binary(), d[j].Binary()) >= 0
+			})
+		}
+	}
+
+	return len(a), len(d)
 }
 
 func (p Patch) String() string {
-	return fmt.Sprintf("Patch[ID=%s Previous=%s AddedRecipes=%d DeletedRecipes=%d]", p.ID, p.Previous, p.AddedRecipes(), p.DeletedRecipes())
+	addedRecipe, deletedRecipe := p.RecipesNum()
+	addedChunk, deletedChunk := p.ChunksNum()
+	return fmt.Sprintf("Patch[ID=%s Previous=%s AddedRecipes=%d DeletedRecipes=%d AddedChunk=%d DeletedChunk=%d]", p.ID, p.Previous, addedRecipe, deletedRecipe, addedChunk, deletedChunk)
 }
 
 func (p *Patch) UnmarshalMsgpack(raw []byte) error {
@@ -303,13 +434,13 @@ func (c *PatchChain) Add(patch Patch) error {
 	return fmt.Errorf("not chained")
 }
 
-func (c *PatchChain) New(recipes RecipeList) (Patch, error) {
+func (c *PatchChain) New(recipes RecipeList, chunks ChunkHoldersPatch) (Patch, error) {
 	prev := PatchID{}
 	if len(c.chain) > 0 {
 		prev = c.chain[len(c.chain)-1].ID
 	}
 
-	patch, err := NewPatch(prev, recipes)
+	patch, err := NewPatch(prev, recipes, chunks)
 	if err != nil {
 		return Patch{}, err
 	}

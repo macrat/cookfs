@@ -83,7 +83,7 @@ func (c *CookFS) RunFollower(ctx context.Context) {
 	candidacyCount := 0
 
 	for {
-		deathTimer := time.Duration(rand.Int63n(int64(c.Config.CandidacyWaitMax - c.Config.CandidacyWaitMin))) + c.Config.CandidacyWaitMin
+		deathTimer := time.Duration(rand.Int63n(int64(c.Config.CandidacyWaitMax-c.Config.CandidacyWaitMin))) + c.Config.CandidacyWaitMin
 		if candidacyCount == 0 {
 			deathTimer += c.Config.LeaderDeathTimer
 		} else {
