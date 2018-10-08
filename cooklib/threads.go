@@ -3,13 +3,10 @@ package cooklib
 import (
 	"context"
 	"math/rand"
-	"sync"
 	"time"
 )
 
 type CookFS struct {
-	sync.RWMutex
-
 	leader       *Node
 	term         int64
 	state        *State
@@ -33,32 +30,22 @@ func NewCookFS(handler CommunicationHandler, nodes func() []*Node, config Config
 }
 
 func (c *CookFS) AliveMessage(alive AliveMessage) Response {
-	c.RLock()
 	if (c.leader.String() == alive.Leader.String() && c.term == alive.Term) || c.term < alive.Term {
-		c.RUnlock()
-		c.Lock()
 		c.alive <- alive.Leader
 		c.leader = alive.Leader
 		c.term = alive.Term
-		c.Unlock()
 
 		return Response{StatusCode: 200}
 	} else {
-		c.RUnlock()
 		return Response{StatusCode: 409}
 	}
 }
 
 func (c *CookFS) PollRequest(request PollRequest) Response {
-	c.RLock()
 	if c.term <= request.Term && c.state.PatchID == request.PatchID && c.lastPollTime.Add(c.Config.PollingInterval).Before(time.Now()) {
-		c.RUnlock()
-		c.Lock()
 		c.lastPollTime = time.Now()
-		c.Unlock()
 		return Response{StatusCode: 200}
 	} else {
-		c.RUnlock()
 		return Response{StatusCode: 409}
 	}
 }
@@ -78,9 +65,7 @@ func (c *CookFS) HandleRequest(request Request) Response {
 	} else {
 		switch request.Path {
 		case "/term":
-			c.RLock()
 			msg := AliveMessage{c.leader, c.term, c.state.PatchID}
-			c.RUnlock()
 			return Response{200, msg}
 
 		default:
@@ -128,15 +113,10 @@ func (c *CookFS) RunCandidacy(ctx context.Context) {
 
 	worker := NewWorkerPool(ctx, c.Handler, c.Config.SendWorkersNum)
 
-	c.RLock()
 	msg := PollRequest{c.Nodes()[0], c.term + 1, c.state.PatchID}
-	c.RUnlock()
 
 	if worker.OverHalf(withTimeout, c.Nodes(), "/term/poll", msg) {
-		c.Lock()
 		c.term++
-		c.leader = c.Nodes()[0]
-		c.Unlock()
 		c.RunLeader(ctx, worker)
 	}
 }
@@ -145,9 +125,7 @@ func (c *CookFS) RunLeader(ctx context.Context, worker WorkerPool) {
 	println("been leader of term", c.term)
 
 	sendAlive := func() {
-		c.RLock()
 		msg := AliveMessage{c.Nodes()[0], c.term, c.state.PatchID}
-		c.RUnlock()
 		worker.SendOnly(ctx, c.Nodes(), "/term", msg, c.Config.AliveTimeout)
 	}
 
