@@ -58,16 +58,32 @@ func NewChunkID(data []byte) ChunkID {
 	return ChunkID{NewUUID(data)}
 }
 
-type Recipe []ChunkID
+type Recipe struct {
+	Size   int64
+	Chunks []ChunkID
+}
+
+type RecipeListPatch map[string]*Recipe
+
+func (r RecipeListPatch) MarshalMsgpack() ([]byte, error) {
+	data := make(map[string]interface{})
+	for k, v := range r {
+		data[k] = v
+	}
+
+	buf := bytes.NewBuffer(make([]byte, 0))
+	err := msgpack.NewEncoder(buf).SortMapKeys(true).Encode(data)
+	return buf.Bytes(), err
+}
 
 type RecipeList map[string]Recipe
 
-func (r RecipeList) Apply(patch RecipeList) {
+func (r RecipeList) Apply(patch RecipeListPatch) {
 	for k, v := range patch {
 		if v == nil {
 			delete(r, k)
 		} else {
-			r[k] = v
+			r[k] = *v
 		}
 	}
 }
@@ -274,7 +290,7 @@ type PatchID struct {
 func calcPatchID(patch Patch) PatchID {
 	encoded, _ := msgpack.Marshal(struct {
 		Previous PatchID
-		Recipes  RecipeList
+		Recipes  RecipeListPatch
 		Chunks   ChunkHoldersPatch
 	}{
 		patch.Previous,
@@ -288,11 +304,11 @@ func calcPatchID(patch Patch) PatchID {
 type Patch struct {
 	Previous PatchID           `json:"previous"`
 	ID       PatchID           `json:"id"`
-	Recipes  RecipeList        `json:"recipes"`
+	Recipes  RecipeListPatch   `json:"recipes"`
 	Chunks   ChunkHoldersPatch `json:"chunks"`
 }
 
-func NewPatch(previous PatchID, recipes RecipeList, chunks ChunkHoldersPatch) (Patch, error) {
+func NewPatch(previous PatchID, recipes RecipeListPatch, chunks ChunkHoldersPatch) (Patch, error) {
 	p := Patch{
 		Previous: previous,
 		Recipes:  recipes,
@@ -434,7 +450,7 @@ func (c *PatchChain) Add(patch Patch) error {
 	return fmt.Errorf("not chained")
 }
 
-func (c *PatchChain) New(recipes RecipeList, chunks ChunkHoldersPatch) (Patch, error) {
+func (c *PatchChain) New(recipes RecipeListPatch, chunks ChunkHoldersPatch) (Patch, error) {
 	prev := PatchID{}
 	if len(c.chain) > 0 {
 		prev = c.chain[len(c.chain)-1].ID

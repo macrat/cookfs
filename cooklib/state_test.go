@@ -43,13 +43,13 @@ func Test_UUID(t *testing.T) {
 
 func Test_RecipeList_Patch(t *testing.T) {
 	r := RecipeList{
-		"/foo/bar":   Recipe{NewChunkID([]byte("hello")), NewChunkID([]byte("world"))},
-		"/hoge/fuga": Recipe{NewChunkID([]byte("abc"))},
+		"/foo/bar":   Recipe{1, []ChunkID{NewChunkID([]byte("hello")), NewChunkID([]byte("world"))}},
+		"/hoge/fuga": Recipe{1, []ChunkID{NewChunkID([]byte("abc"))}},
 	}
 
-	patch := RecipeList{
+	patch := RecipeListPatch{
 		"/hoge/fuga": nil,
-		"/piyo":      Recipe{NewChunkID([]byte("def"))},
+		"/piyo":      &Recipe{1, []ChunkID{NewChunkID([]byte("def"))}},
 	}
 
 	r.Apply(patch)
@@ -58,12 +58,12 @@ func Test_RecipeList_Patch(t *testing.T) {
 		t.Errorf("unexcepted number of recipes: excepted 2 but got %d", len(r))
 	}
 
-	if len(r["/foo/bar"]) != 2 {
-		t.Errorf("unexcepted recipe: excepted length is %d but got %d", 2, len(r["/foo/bar"]))
+	if len(r["/foo/bar"].Chunks) != 2 {
+		t.Errorf("unexcepted recipe: excepted length is %d but got %d", 2, len(r["/foo/bar"].Chunks))
 	}
 
-	if len(r["/piyo"]) != 1 {
-		t.Errorf("unexcepted recipe: excepted length is %d but got %d", 1, len(r["/piyo"]))
+	if len(r["/piyo"].Chunks) != 1 {
+		t.Errorf("unexcepted recipe: excepted length is %d but got %d", 1, len(r["/piyo"].Chunks))
 	}
 }
 
