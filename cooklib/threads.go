@@ -2,21 +2,22 @@ package cooklib
 
 import (
 	"context"
-	"math/rand"
+	"strings"
 	"time"
+	"fmt"
 )
 
 type CookFS struct {
-	leader       *Node
-	term         int64
-	state        *State
-	lastPollTime time.Time
+	leader *Node
+	term   int64
+	state  *State
 
 	Nodes   func() []*Node
 	Handler CommunicationHandler
 	Config  Config
 
-	alive chan *Node
+	alive   chan *Node
+	polling chan PollingTask
 }
 
 func NewCookFS(handler CommunicationHandler, nodes func() []*Node, config Config) *CookFS {
@@ -26,6 +27,7 @@ func NewCookFS(handler CommunicationHandler, nodes func() []*Node, config Config
 		Handler: handler,
 		Config:  config,
 		alive:   make(chan *Node),
+		polling: make(chan PollingTask, len(nodes())*2),
 	}
 }
 
@@ -42,9 +44,21 @@ func (c *CookFS) AliveMessage(alive AliveMessage) Response {
 }
 
 func (c *CookFS) PollRequest(request PollRequest) Response {
-	if c.term <= request.Term && c.state.PatchID == request.PatchID && c.lastPollTime.Add(c.Config.PollingInterval).Before(time.Now()) {
-		c.lastPollTime = time.Now()
-		return Response{StatusCode: 200}
+	if c.term <= request.Term && c.state.PatchID == request.PatchID {
+		accept := make(chan bool)
+		c.polling <- PollingTask{request, accept}
+
+		select {
+		case acc := <-accept:
+			if acc {
+				return Response{StatusCode: 204}
+			} else {
+				return Response{StatusCode: 409}
+			}
+
+		case <-time.After(c.Config.CandidacyTimeout):
+			return Response{StatusCode: 409}
+		}
 	} else {
 		return Response{StatusCode: 409}
 	}
@@ -65,8 +79,7 @@ func (c *CookFS) HandleRequest(request Request) Response {
 	} else {
 		switch request.Path {
 		case "/term":
-			msg := AliveMessage{c.leader, c.term, c.state.PatchID}
-			return Response{200, msg}
+			return Response{200, AliveMessage{c.leader, c.term, c.state.PatchID}}
 
 		default:
 			return Response{StatusCode: 404}
@@ -76,26 +89,18 @@ func (c *CookFS) HandleRequest(request Request) Response {
 
 func (c *CookFS) RunFollower(ctx context.Context) {
 	var cancelCandidacy context.CancelFunc
-	candidacyCount := 0
+
+	go PollingConsiliator(ctx, c.polling, c.Config.PollingWindow)
 
 	for {
-		deathTimer := time.Duration(rand.Int63n(int64(c.Config.CandidacyWaitMax-c.Config.CandidacyWaitMin))) + c.Config.CandidacyWaitMin
-		if candidacyCount == 0 {
-			deathTimer += c.Config.LeaderDeathTimer
-		} else {
-			deathTimer *= time.Duration(candidacyCount + 1)
-		}
-
 		select {
 		case leader := <-c.alive:
-			candidacyCount = 0
 			if leader.String() != c.Nodes()[0].String() && cancelCandidacy != nil {
 				cancelCandidacy()
 				cancelCandidacy = nil
 			}
 
-		case <-time.After(deathTimer):
-			candidacyCount++
+		case <-time.After(c.Config.LeaderDeathTimer):
 			var ctx2 context.Context
 			ctx2, cancelCandidacy = context.WithCancel(ctx)
 			go c.RunCandidacy(ctx2)
@@ -107,7 +112,7 @@ func (c *CookFS) RunFollower(ctx context.Context) {
 }
 
 func (c *CookFS) RunCandidacy(ctx context.Context) {
-	println("been candidacy of term", c.term+1)
+	fmt.Println("been candidacy of term", c.term+1)
 
 	withTimeout, _ := context.WithTimeout(ctx, c.Config.CandidacyTimeout)
 
@@ -115,14 +120,15 @@ func (c *CookFS) RunCandidacy(ctx context.Context) {
 
 	msg := PollRequest{c.Nodes()[0], c.term + 1, c.state.PatchID}
 
-	if worker.OverHalf(withTimeout, c.Nodes(), "/term/poll", msg) {
+	if worker.OverHalf(withTimeout, c.Nodes(), "/term/poll", msg, c.Config.CandidacyTimeout) {
 		c.term++
+		c.leader = c.Nodes()[0]
 		c.RunLeader(ctx, worker)
 	}
 }
 
 func (c *CookFS) RunLeader(ctx context.Context, worker WorkerPool) {
-	println("been leader of term", c.term)
+	fmt.Println("been leader of term", c.term)
 
 	sendAlive := func() {
 		msg := AliveMessage{c.Nodes()[0], c.term, c.state.PatchID}
@@ -197,11 +203,11 @@ func (w WorkerPool) SendOnly(ctx context.Context, nodes []*Node, path string, da
 	}
 }
 
-func (w WorkerPool) OverHalf(ctx context.Context, nodes []*Node, path string, data interface{}) bool {
+func (w WorkerPool) OverHalf(ctx context.Context, nodes []*Node, path string, data interface{}, timeout time.Duration) bool {
 	response := make(chan Response, len(nodes))
 
 	for _, node := range nodes {
-		w.task <- WorkerTask{Request{node, path, data, 0}, response}
+		w.task <- WorkerTask{Request{node, path, data, timeout}, response}
 	}
 
 	allow := 0
@@ -229,4 +235,54 @@ func (w WorkerPool) OverHalf(ctx context.Context, nodes []*Node, path string, da
 	}
 
 	return false
+}
+
+type PollingTask struct {
+	request PollRequest
+	accept  chan bool
+}
+
+func PollingConsiliator(ctx context.Context, ch chan PollingTask, windowDuration time.Duration) {
+	var window context.Context
+	var candidate PollingTask
+	var tasks []PollingTask
+
+	waitWindow := func() <-chan struct{} {
+		if window != nil {
+			return window.Done()
+		} else {
+			return make(chan struct{})
+		}
+	}
+
+	for {
+		select {
+		case task := <-ch:
+			if window == nil {
+				window, _ = context.WithTimeout(context.Background(), windowDuration)
+				tasks = []PollingTask{task}
+				candidate = task
+			} else {
+				tasks = append(tasks, task)
+				if strings.Compare(task.request.Node.String(), candidate.request.Node.String()) < 0 {
+					candidate = task
+				}
+			}
+
+		case <-waitWindow():
+			window = nil
+
+			fmt.Println("poll to", candidate.request.Node.String(), "by", len(tasks), "nodes")
+
+			candidate.accept <-true
+			for _, t := range tasks {
+				if t.request != candidate.request {
+					t.accept <-false
+				}
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
 }

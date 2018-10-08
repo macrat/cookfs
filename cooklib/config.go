@@ -11,7 +11,7 @@ type Config struct {
 	CandidacyWaitMin time.Duration
 	CandidacyWaitMax time.Duration
 	CandidacyTimeout time.Duration
-	PollingInterval  time.Duration
+	PollingWindow    time.Duration
 
 	SendWorkersNum int
 }
@@ -20,11 +20,9 @@ var (
 	DefaultConfig = Config{
 		AliveInterval:    100 * time.Millisecond,
 		AliveTimeout:     500 * time.Millisecond,
-		LeaderDeathTimer: 500 * time.Millisecond,
-		CandidacyWaitMin: 100 * time.Millisecond,
-		CandidacyWaitMax: 1 * time.Second,
-		CandidacyTimeout: 500 * time.Millisecond,
-		PollingInterval:  1 * time.Second,
+		LeaderDeathTimer: 1500 * time.Millisecond,
+		CandidacyTimeout: 1000 * time.Millisecond,
+		PollingWindow:    500 * time.Millisecond,
 
 		SendWorkersNum: 10,
 	}

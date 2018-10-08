@@ -14,7 +14,7 @@ import (
 
 type HTTPHandler http.Client
 
-func processSet(c *cooklib.CookFS, path string, body io.Reader) cooklib.Response {
+func processSet(c *cooklib.CookFS, path string, body io.ReadCloser) cooklib.Response {
 	data := cooklib.NewRequestStruct(path)
 	if data == nil {
 		return cooklib.Response{StatusCode: 404}
@@ -23,6 +23,7 @@ func processSet(c *cooklib.CookFS, path string, body io.Reader) cooklib.Response
 	if err := msgpack.NewDecoder(body).Decode(data); err != nil {
 		return cooklib.Response{StatusCode: 404}
 	}
+	body.Close()
 
 	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, data, 0})
 }
@@ -39,7 +40,6 @@ func newMux(ctx context.Context, c *cooklib.CookFS) *http.ServeMux {
 
 		if r.Method == "POST" {
 			response = processSet(c, r.URL.Path, r.Body)
-			r.Body.Close()
 		} else {
 			response = processGet(c, r.URL.Path)
 		}
@@ -80,22 +80,23 @@ func (h *HTTPHandler) Send(ctx context.Context, req cooklib.Request) cooklib.Res
 	} else {
 		data, err := msgpack.Marshal(req.Data)
 		if err != nil {
-			return cooklib.Response{StatusCode: 400}
+			return cooklib.Response{StatusCode: http.StatusBadRequest}
 		}
 		request, err = http.NewRequest("POST", (&u).String(), bytes.NewReader(data))
 	}
 	if err != nil {
-		return cooklib.Response{StatusCode: 400}
+		return cooklib.Response{StatusCode: http.StatusBadRequest}
 	}
 
 	response, err := (*http.Client)(h).Do(request.WithContext(ctx))
 	if err != nil {
-		return cooklib.Response{StatusCode: 400}
+		fmt.Println(err.Error())
+		return cooklib.Response{StatusCode: http.StatusBadGateway}
 	}
 
 	data, err := msgpack.NewDecoder(response.Body).DecodeInterface()
 	if err != nil {
-		return cooklib.Response{StatusCode: 400}
+		return cooklib.Response{response.StatusCode, nil}
 	}
 	return cooklib.Response{response.StatusCode, data}
 }
