@@ -19,13 +19,13 @@ import (
 func Request(servers []*cooklib.Node, path string, data interface{}) cooklib.Response {
 	handler := &plugins.HTTPHandler{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 
 	resp := make(chan cooklib.Response)
 
 	for _, server := range servers {
 		go func(server *cooklib.Node) {
-			r := handler.Send(ctx, cooklib.Request{server, path, data})
+			r := handler.Send(ctx, cooklib.Request{server, path, data, 0})
 			if r.StatusCode == 200 || r.StatusCode == 204 {
 				resp <- r
 				cancel()

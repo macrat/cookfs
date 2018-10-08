@@ -24,11 +24,11 @@ func processSet(c *cooklib.CookFS, path string, body io.Reader) cooklib.Response
 		return cooklib.Response{StatusCode: 404}
 	}
 
-	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, data})
+	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, data, 0})
 }
 
 func processGet(c *cooklib.CookFS, path string) cooklib.Response {
-	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, nil})
+	return c.HandleRequest(cooklib.Request{c.Nodes()[0], path, nil, 0})
 }
 
 func newMux(ctx context.Context, c *cooklib.CookFS) *http.ServeMux {

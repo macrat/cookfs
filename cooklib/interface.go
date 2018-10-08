@@ -2,12 +2,14 @@ package cooklib
 
 import (
 	"context"
+	"time"
 )
 
 type Request struct {
-	Node *Node
-	Path string
-	Data interface{}
+	Node    *Node
+	Path    string
+	Data    interface{}
+	Timeout time.Duration
 }
 
 type Response struct {

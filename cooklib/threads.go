@@ -10,9 +10,10 @@ import (
 type CookFS struct {
 	sync.RWMutex
 
-	leader *Node
-	term   int64
-	state  *State
+	leader       *Node
+	term         int64
+	state        *State
+	lastPollTime time.Time
 
 	Nodes   func() []*Node
 	Handler CommunicationHandler
@@ -49,7 +50,17 @@ func (c *CookFS) AliveMessage(alive AliveMessage) Response {
 }
 
 func (c *CookFS) PollRequest(request PollRequest) Response {
-	return Response{StatusCode: 200}
+	c.RLock()
+	if c.term <= request.Term && c.state.PatchID == request.PatchID && c.lastPollTime.Add(c.Config.PollingInterval).Before(time.Now()) {
+		c.RUnlock()
+		c.Lock()
+		c.lastPollTime = time.Now()
+		c.Unlock()
+		return Response{StatusCode: 200}
+	} else {
+		c.RUnlock()
+		return Response{StatusCode: 409}
+	}
 }
 
 func (c *CookFS) HandleRequest(request Request) Response {
@@ -97,7 +108,6 @@ func (c *CookFS) RunFollower(ctx context.Context) {
 				cancelCandidacy()
 				cancelCandidacy = nil
 			}
-			continue
 
 		case <-time.After(deathTimer):
 			candidacyCount++
@@ -112,9 +122,9 @@ func (c *CookFS) RunFollower(ctx context.Context) {
 }
 
 func (c *CookFS) RunCandidacy(ctx context.Context) {
-	println("been candidacy")
+	println("been candidacy of term", c.term+1)
 
-	withTimeout, _ := context.WithTimeout(ctx, 1*time.Second)
+	withTimeout, _ := context.WithTimeout(ctx, c.Config.CandidacyTimeout)
 
 	worker := NewWorkerPool(ctx, c.Handler, c.Config.SendWorkersNum)
 
@@ -132,17 +142,23 @@ func (c *CookFS) RunCandidacy(ctx context.Context) {
 }
 
 func (c *CookFS) RunLeader(ctx context.Context, worker WorkerPool) {
-	println("been leader")
+	println("been leader of term", c.term)
+
+	sendAlive := func() {
+		c.RLock()
+		msg := AliveMessage{c.Nodes()[0], c.term, c.state.PatchID}
+		c.RUnlock()
+		worker.SendOnly(ctx, c.Nodes(), "/term", msg, c.Config.AliveTimeout)
+	}
+
+	go sendAlive()
 
 	interval := time.Tick(c.Config.AliveInterval)
 
 	for {
 		select {
 		case <-interval:
-			c.RLock()
-			msg := AliveMessage{c.Nodes()[0], c.term, c.state.PatchID}
-			c.RUnlock()
-			worker.SendOnly(ctx, c.Nodes(), "/term", msg)
+			go sendAlive()
 
 		case <-ctx.Done():
 			return
@@ -159,7 +175,11 @@ func CommunicateWorker(ctx context.Context, handler CommunicationHandler, task c
 	for {
 		select {
 		case t := <-task:
-			result := handler.Send(ctx, t.request)
+			c := ctx
+			if t.request.Timeout != 0 {
+				c, _ = context.WithTimeout(c, t.request.Timeout)
+			}
+			result := handler.Send(c, t.request)
 			if t.response != nil {
 				t.response <- result
 			}
@@ -176,7 +196,7 @@ type WorkerPool struct {
 }
 
 func NewWorkerPool(ctx context.Context, handler CommunicationHandler, workersNum int) WorkerPool {
-	w := WorkerPool{make(chan WorkerTask), ctx}
+	w := WorkerPool{make(chan WorkerTask, workersNum*10), ctx}
 
 	for i := 0; i < workersNum; i++ {
 		go CommunicateWorker(ctx, handler, w.task)
@@ -185,10 +205,8 @@ func NewWorkerPool(ctx context.Context, handler CommunicationHandler, workersNum
 	return w
 }
 
-func (w WorkerPool) SendOnly(ctx context.Context, nodes []*Node, path string, data interface{}) {
+func (w WorkerPool) SendOnly(ctx context.Context, nodes []*Node, path string, data interface{}, timeout time.Duration) {
 	for _, node := range nodes {
-		w.task <- WorkerTask{Request{node, path, data}, nil}
-
 		select {
 		case <-ctx.Done():
 			return
@@ -196,15 +214,16 @@ func (w WorkerPool) SendOnly(ctx context.Context, nodes []*Node, path string, da
 			return
 
 		default:
+			w.task <- WorkerTask{Request{node, path, data, timeout}, nil}
 		}
 	}
 }
 
 func (w WorkerPool) OverHalf(ctx context.Context, nodes []*Node, path string, data interface{}) bool {
-	response := make(chan Response)
+	response := make(chan Response, len(nodes))
 
 	for _, node := range nodes {
-		w.task <- WorkerTask{Request{node, path, data}, response}
+		w.task <- WorkerTask{Request{node, path, data, 0}, response}
 	}
 
 	allow := 0

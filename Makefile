@@ -13,4 +13,4 @@ bin/cookctl: $(shell ls cookctl/*.go cooklib/*.go)
 
 .PHONY: clean
 clean:
-	rm -r bin
+	-rm -r bin
